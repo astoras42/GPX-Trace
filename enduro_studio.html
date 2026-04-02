@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Enduro GPX Studio</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    /* ── Base ─────────────────────────────────────────────────────── */
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',sans-serif;background:#1a1a2e;color:#eee;height:100vh;display:flex;flex-direction:column}
+
+    /* ── Header ───────────────────────────────────────────────────── */
+    header{background:#16213e;padding:12px 20px;display:flex;align-items:center;gap:16px;border-bottom:2px solid #e94560;flex-shrink:0}
+    header h1{font-size:1.15rem;color:#e94560;letter-spacing:1px;text-transform:uppercase}
+    .subtitle{font-size:0.78rem;color:#888}
+    .header-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+    .btn-gen{background:#e94560;color:#fff;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;font-size:0.88rem;font-weight:700;letter-spacing:.5px;transition:background .2s;white-space:nowrap}
+    .btn-gen:hover{background:#c73652}
+    .load-lbl{background:#0f3460;color:#aaa;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:0.78rem;transition:background .2s;white-space:nowrap}
+    .load-lbl:hover{background:#1a4a80;color:#eee}
+    #file-input{display:none}
+
+    /* ── Layout ───────────────────────────────────────────────────── */
+    .main{display:flex;flex:1;overflow:hidden}
+    #map{flex:1;height:100%}
+    .sidebar{width:280px;background:#16213e;overflow-y:auto;border-left:1px solid #2a2a4a;flex-shrink:0}
+    .panel{border-bottom:1px solid #2a2a4a;padding:16px}
+    .panel h2{font-size:.72rem;text-transform:uppercase;letter-spacing:1px;color:#e94560;margin-bottom:12px}
+
+    /* ── Stat grid ────────────────────────────────────────────────── */
+    .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .stat-box{background:#0f3460;border-radius:8px;padding:10px;text-align:center}
+    .stat-box .val{font-size:1.3rem;font-weight:700;color:#e94560}
+    .stat-box .lbl{font-size:.68rem;color:#aaa;margin-top:2px}
+    .stat-box.full{grid-column:1/-1}
+
+    /* ── Map controls ─────────────────────────────────────────────── */
+    .map-controls{display:flex;flex-direction:column;gap:6px}
+    .ctrl-btn{background:#0f3460;border:none;color:#eee;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:.78rem;text-align:left;transition:background .2s}
+    .ctrl-btn:hover{background:#1a4a80}
+    .ctrl-btn.active{background:#e94560}
+
+    /* ── Waypoint list ────────────────────────────────────────────── */
+    .wp-list{list-style:none}
+    .wp-item{display:flex;align-items:center;gap:10px;padding:6px 8px;border-bottom:1px solid #1e2a4a;cursor:pointer;transition:background .15s;border-radius:4px}
+    .wp-item:hover{background:#1e2a4a}
+    .wp-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+    .wp-dot.start{background:#2ecc71;box-shadow:0 0 6px #2ecc71}
+    .wp-dot.finish{background:#e74c3c;box-shadow:0 0 6px #e74c3c}
+    .wp-dot.mid{background:#f39c12}
+    .wp-name{font-size:.78rem;font-weight:600}
+    .wp-coords{font-size:.62rem;color:#666;margin-top:1px}
+
+    /* ── Placeholder ──────────────────────────────────────────────── */
+    .placeholder{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#555;pointer-events:none;z-index:500}
+    .placeholder svg{width:56px;height:56px;fill:#333;margin-bottom:14px}
+    .placeholder p{font-size:.95rem}
+    .placeholder small{font-size:.78rem;color:#444}
+
+    /* ── Modal overlay ────────────────────────────────────────────── */
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:2000;align-items:center;justify-content:center}
+    .modal-overlay.open{display:flex}
+    .modal{background:#16213e;border:1px solid #e94560;border-radius:12px;padding:26px 28px;width:430px;max-height:92vh;overflow-y:auto;position:relative;box-shadow:0 8px 40px rgba(0,0,0,.6)}
+    .modal-close{position:absolute;top:12px;right:16px;background:none;border:none;color:#888;font-size:1.5rem;cursor:pointer;line-height:1}
+    .modal-close:hover{color:#eee}
+    .modal h2{color:#e94560;font-size:1rem;letter-spacing:1px;text-transform:uppercase;margin-bottom:20px;display:flex;align-items:center;gap:8px}
+
+    /* ── Modal fields ─────────────────────────────────────────────── */
+    .field{margin-bottom:16px}
+    .field label{display:block;font-size:.7rem;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+    .field input[type=text]{width:100%;background:#0f3460;border:1px solid #2a2a4a;color:#eee;padding:9px 12px;border-radius:6px;font-size:.88rem;outline:none;transition:border-color .2s}
+    .field input[type=text]:focus{border-color:#e94560}
+    .slider-row{display:flex;align-items:center;gap:10px}
+    .slider-row input[type=range]{flex:1;accent-color:#e94560}
+    .slider-val{font-size:.95rem;font-weight:700;color:#e94560;min-width:64px;text-align:right}
+    .hint-text{font-size:.68rem;color:#666;margin-top:4px}
+    .btn-generate{width:100%;padding:12px;font-size:.9rem;font-weight:700;background:#e94560;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-top:8px;transition:opacity .2s;letter-spacing:.5px}
+    .btn-generate:hover{opacity:.88}
+    .btn-generate:disabled{opacity:.4;cursor:default}
+
+    /* ── Progress ─────────────────────────────────────────────────── */
+    .progress-section{margin-top:16px;display:none}
+    .progress-section.on{display:block}
+    .prog-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+    .prog-title{font-size:.78rem;font-weight:600}
+    .prog-pct{font-size:.72rem;color:#888}
+    .prog-bg{height:4px;background:#0f3460;border-radius:2px;margin-bottom:10px;overflow:hidden}
+    .prog-fill{height:100%;background:#e94560;border-radius:2px;transition:width .4s;width:0}
+    .logbox{font-size:.68rem;color:#888;font-family:monospace;max-height:150px;overflow-y:auto;line-height:1.8;background:#0a1628;padding:8px;border-radius:6px}
+    .logbox .ok{color:#2ecc71}.logbox .warn{color:#f39c12}.logbox .err{color:#e74c3c}.logbox .info{color:#3498db}
+
+    /* ── Spinner ──────────────────────────────────────────────────── */
+    .spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite;vertical-align:middle;margin-right:6px}
+    @keyframes sp{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🏍 Enduro GPX Studio</h1>
+    <div class="subtitle">Génération &amp; visualisation de circuits enduro — OpenStreetMap</div>
+  </div>
+  <div class="header-right">
+    <button class="btn-gen" onclick="openModal()">⚡ Générer une trace</button>
+    <label class="load-lbl" for="file-input">📂 Charger GPX</label>
+    <input type="file" id="file-input" accept=".gpx"/>
+  </div>
+</header>
+
+<div class="main">
+  <div style="position:relative;flex:1;">
+    <div id="map"></div>
+    <div class="placeholder" id="placeholder">
+      <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+      <p>Aucune trace chargée</p>
+      <small>Cliquez sur "Générer une trace"<br>ou chargez un fichier .gpx</small>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="panel">
+      <h2>Statistiques</h2>
+      <div class="stat-grid">
+        <div class="stat-box full"><div class="val" id="s-dist">—</div><div class="lbl">Distance totale</div></div>
+        <div class="stat-box"><div class="val" id="s-offroad" style="color:#2ecc71">—</div><div class="lbl">% Chemins</div></div>
+        <div class="stat-box"><div class="val" id="s-pts">—</div><div class="lbl">Points GPS</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Affichage carte</h2>
+      <div class="map-controls">
+        <button class="ctrl-btn active" id="btn-topo" onclick="setLayer('topo')">🗺 Topographique (OSM)</button>
+        <button class="ctrl-btn" id="btn-sat"  onclick="setLayer('sat')">🛰 Satellite (Esri)</button>
+        <button class="ctrl-btn" id="btn-out"  onclick="setLayer('out')">🏔 Outdoor (Stadia)</button>
+        <button class="ctrl-btn" id="btn-fit"  onclick="fitRoute()">⊕ Recentrer</button>
+        <button class="ctrl-btn" id="btn-dl"   onclick="dlGPX()" style="display:none;border:1px solid #e94560;color:#e94560">⬇ Télécharger GPX</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Waypoints</h2>
+      <ul class="wp-list" id="wp-list">
+        <li style="color:#555;font-size:.78rem;">Aucune trace chargée</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal de génération ───────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <h2>⚡ Générer un circuit</h2>
+
+    <div class="field">
+      <label>Point de départ</label>
+      <input type="text" id="m-loc" placeholder="Ville, village ou lat, lon" value="Vabre, Tarn"/>
+      <div class="hint-text">Nom de lieu ou coordonnées GPS (ex: 43.64, 2.53)</div>
+    </div>
+
+    <div class="field">
+      <label>Distance cible — <span id="m-d-lbl" style="color:#e94560">35 km</span></label>
+      <div class="slider-row">
+        <input type="range" id="m-dist" min="10" max="200" step="5" value="35" oninput="mSlider()"/>
+        <span class="slider-val" id="m-d-val">35 km</span>
+      </div>
+      <div class="hint-text">Tolérance ±20% — boucle départ/arrivée même point</div>
+    </div>
+
+    <div class="field">
+      <label>Taux de chemins / offroad — <span id="m-t-lbl" style="color:#2ecc71">85%</span></label>
+      <div class="slider-row">
+        <input type="range" id="m-trail" min="30" max="100" step="5" value="85" oninput="mSlider()"/>
+        <span class="slider-val" id="m-t-val" style="color:#2ecc71">85%</span>
+      </div>
+      <div class="hint-text">100% = maximise les tracks &amp; chemins, évite toute route</div>
+    </div>
+
+    <button class="btn-generate" id="m-btn" onclick="startGenerate()">Générer la trace</button>
+
+    <div class="progress-section" id="m-prog">
+      <div class="prog-head">
+        <span class="prog-title" id="m-pt">Démarrage...</span>
+        <span class="prog-pct" id="m-pp">0%</span>
+      </div>
+      <div class="prog-bg"><div class="prog-fill" id="m-pf"></div></div>
+      <div class="logbox" id="m-log"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+// ══════════════════════════════════════════════════════════════════════
+//  CARTE (Leaflet)
+// ══════════════════════════════════════════════════════════════════════
+const map = L.map('map',{zoomControl:true}).setView([43.69,2.43],10);
+const LAYERS = {
+  topo: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}),
+  sat:  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:19}),
+  out:  L.tileLayer('https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png',{attribution:'© Stadia Maps',maxZoom:20})
+};
+LAYERS.topo.addTo(map);
+let curLayer='topo', routePolyline=null, wptMarkers=[], routeBounds=null;
+
+function setLayer(n){
+  map.removeLayer(LAYERS[curLayer]);LAYERS[n].addTo(map);curLayer=n;
+  document.querySelectorAll('.ctrl-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('btn-'+n).classList.add('active');
+}
+function fitRoute(){if(routeBounds)map.fitBounds(routeBounds,{padding:[30,30]});}
+
+// ══════════════════════════════════════════════════════════════════════
+//  VISUALISEUR GPX
+// ══════════════════════════════════════════════════════════════════════
+function parseGPX(text){
+  const xml=new DOMParser().parseFromString(text,'application/xml');
+  const ns='http://www.topografix.com/GPX/1/1';
+  const fa=el=>parseFloat(el.getAttribute('lat')||0), fb=el=>parseFloat(el.getAttribute('lon')||0);
+  const wpts=[...xml.getElementsByTagNameNS(ns,'wpt')].map(w=>({
+    lat:fa(w),lon:fb(w),name:w.getElementsByTagNameNS(ns,'name')[0]?.textContent||''
+  }));
+  const pts=[...xml.getElementsByTagNameNS(ns,'trkpt')].map(p=>({
+    lat:fa(p),lon:fb(p),
+    ele:p.getElementsByTagNameNS(ns,'ele')[0]?parseFloat(p.getElementsByTagNameNS(ns,'ele')[0].textContent):null
+  }));
+  return{name:xml.getElementsByTagNameNS(ns,'name')[0]?.textContent||'Trace',wpts,pts};
+}
+
+function havViz(a,b){
+  const R=6371000,p=Math.PI/180,dLat=(b.lat-a.lat)*p,dLon=(b.lon-a.lon)*p;
+  const s=Math.sin(dLat/2)**2+Math.cos(a.lat*p)*Math.cos(b.lat*p)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+
+function renderGPX(gpx,offroadPct){
+  if(routePolyline)map.removeLayer(routePolyline);
+  wptMarkers.forEach(m=>map.removeLayer(m));wptMarkers=[];
+  const{pts,wpts}=gpx;
+  document.getElementById('placeholder').style.display='none';
+
+  routePolyline=L.polyline(pts.map(p=>[p.lat,p.lon]),
+    {color:'#e94560',weight:3.5,opacity:0.9,smoothFactor:1}).addTo(map);
+  routeBounds=routePolyline.getBounds();
+  map.fitBounds(routeBounds,{padding:[30,30]});
+
+  const wpList=document.getElementById('wp-list');wpList.innerHTML='';
+  wpts.forEach((wp,i)=>{
+    const isS=i===0,isF=i===wpts.length-1;
+    const col=isS?'#2ecc71':isF?'#e74c3c':'#f39c12';
+    const ico=isS?'🟢':isF?'🔴':'🟡';
+    const mk=L.marker([wp.lat,wp.lon],{icon:L.divIcon({className:'',
+      html:`<div style="background:${col};width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 6px ${col}"></div>`,
+      iconSize:[12,12],iconAnchor:[6,6]})}).addTo(map)
+      .bindPopup(`<b>${wp.name}</b><br>${wp.lat.toFixed(5)}, ${wp.lon.toFixed(5)}`);
+    wptMarkers.push(mk);
+    const li=document.createElement('li');li.className='wp-item';
+    li.innerHTML=`<div class="wp-dot ${isS?'start':isF?'finish':'mid'}"></div>
+      <div><div class="wp-name">${ico} ${wp.name}</div>
+      <div class="wp-coords">${wp.lat.toFixed(5)}, ${wp.lon.toFixed(5)}</div></div>`;
+    li.onclick=()=>{map.setView([wp.lat,wp.lon],14);mk.openPopup();};
+    wpList.appendChild(li);
+  });
+
+  let dist=0;for(let i=1;i<pts.length;i++)dist+=havViz(pts[i-1],pts[i]);
+  document.getElementById('s-dist').textContent=(dist/1000).toFixed(1)+' km';
+  document.getElementById('s-pts').textContent=pts.length.toLocaleString('fr');
+  document.getElementById('s-offroad').textContent=offroadPct!=null?offroadPct+'%':'—';
+  document.title=gpx.name+' — Enduro GPX Studio';
+}
+
+document.getElementById('file-input').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();r.onload=ev=>renderGPX(parseGPX(ev.target.result),null);r.readAsText(f);
+});
+document.getElementById('map').addEventListener('dragover',e=>e.preventDefault());
+document.getElementById('map').addEventListener('drop',e=>{
+  e.preventDefault();const f=e.dataTransfer.files[0];
+  if(f?.name.endsWith('.gpx')){const r=new FileReader();r.onload=ev=>renderGPX(parseGPX(ev.target.result),null);r.readAsText(f);}
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  GÉNÉRATEUR — algorithme "explorer walk" (sans waypoints imposés)
+// ══════════════════════════════════════════════════════════════════════
+//
+//  Problèmes de l'ancienne approche résolus :
+//  1. Aller-retour  → plus de waypoints sur polygone. La marche aller
+//     explore librement les chemins, le retour Dijkstra emprunte des
+//     arêtes différentes grâce aux pénalités BTPEN (×20).
+//  2. Distance trop longue → multiplicateurs plafonnés à ×8 (était ×79)
+//     + boucle de correction itérative du budget (4 tentatives max).
+//  3. Offroad insuffisant → score offroad fort dans la marche (track/path
+//     ×3..6 selon %). À 100% : toute route est fortement pénalisée.
+//  4. Waypoints imposés → supprimés. L'algo explore le graphe librement
+//     depuis le point de départ.
+//
+// ══════════════════════════════════════════════════════════════════════
+
+const SERVERS = [
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+];
+const HW_NAMES = ['track','path','unclassified','tertiary','secondary'];
+const HW_CODE  = {track:0,path:1,unclassified:2,tertiary:3,secondary:4};
+const BTPEN = 20;    // pénalité ×20 sur arêtes déjà empruntées → retour différent
+const MAX_ITER = 4;  // tentatives max de correction de distance
+const TOL = 0.20;    // ±20% de tolérance
+
+let gpxData=null, gpxName='enduro.gpx', gUsed=new Map();
+
+// ── Haversine ────────────────────────────────────────────────────────
+function hav(a,b,c,d){
+  const R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,
+        dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180;
+  const x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function ek(a,b){return a<b?a*1e7+b:b*1e7+a;}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+// ── Géocodage ────────────────────────────────────────────────────────
+async function geocode(q){
+  const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`,
+    {headers:{'Accept-Language':'fr','User-Agent':'EnduroGPX-Studio'}});
+  const d=await r.json();
+  if(!d.length)throw new Error('Lieu introuvable : '+q);
+  return{lat:parseFloat(d[0].lat),lon:parseFloat(d[0].lon),name:d[0].display_name.split(',')[0]};
+}
+
+// ── Fetch OSM (4 tuiles autour du point de départ) ───────────────────
+async function fetchOSM(sLat,sLon,radiusKm){
+  const OVL=0.06;
+  const Rlat=radiusKm/111;
+  const Rlon=radiusKm/(111*Math.cos(sLat*Math.PI/180));
+  const la0=sLat-Rlat-OVL, la1=sLat+Rlat+OVL;
+  const lo0=sLon-Rlon-OVL, lo1=sLon+Rlon+OVL;
+  const ml=(la0+la1)/2, mo=(lo0+lo1)/2;
+  const bboxes=[
+    [la0,lo0,ml+OVL,mo+OVL],[la0,mo-OVL,ml+OVL,lo1],
+    [ml-OVL,lo0,la1,mo+OVL],[ml-OVL,mo-OVL,la1,lo1]
+  ];
+  const all=[], seen=new Set();
+  for(let i=0;i<4;i++){
+    mProg(5+i*11,`Récupération OSM tuile ${i+1}/4...`);
+    const[a,b,c,d]=bboxes[i];
+    const q=`[out:json][timeout:90];(way["highway"="track"](${a},${b},${c},${d});way["highway"="path"](${a},${b},${c},${d});way["highway"="unclassified"](${a},${b},${c},${d});way["highway"="tertiary"](${a},${b},${c},${d});way["highway"="secondary"](${a},${b},${c},${d}););out geom tags;`;
+    let ok=false;
+    for(const sv of SERVERS){
+      try{
+        const r=await fetch(sv,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)});
+        if(!r.ok)throw new Error('HTTP '+r.status);
+        const els=(await r.json()).elements;
+        let nb=0;for(const e of els){if(!seen.has(e.id)){seen.add(e.id);all.push(e);nb++;}}
+        mLog(`Tuile ${i+1} — ${nb} voies`,'ok');
+        ok=true;await sleep(1800);break;
+      }catch(ex){mLog(`Tuile ${i+1} erreur (${sv.split('/')[2]}): ${ex.message}`,'warn');await sleep(600);}
+    }
+    if(!ok)mLog(`Tuile ${i+1} ignorée`,'err');
+  }
+  return all;
+}
+
+// ── Construction du graphe ────────────────────────────────────────────
+function buildGraph(els,costs){
+  const nmap=new Map(), nc=[], trackSet=new Set(), adj=[];
+  function nid(lat,lon){
+    const k=Math.round(lat*1e5)+'_'+Math.round(lon*1e5);
+    if(!nmap.has(k)){const i=nc.length>>1;nmap.set(k,i);nc.push(lat,lon);adj.push([]);}
+    return nmap.get(k);
+  }
+  for(const way of els){
+    if(!way.geometry||way.geometry.length<2)continue;
+    const hw=way.tags?.highway||'track';
+    const mult=costs[hw]||3.0;
+    const code=HW_CODE[hw]??2;
+    const ids=way.geometry.map(p=>nid(p.lat,p.lon));
+    if(hw==='track'||hw==='path')for(const id of ids)trackSet.add(id);
+    for(let i=1;i<ids.length;i++){
+      const a=ids[i-1],b=ids[i];
+      const d=hav(nc[a*2],nc[a*2+1],nc[b*2],nc[b*2+1]);
+      adj[a].push(b,d,d*mult,code);
+      adj[b].push(a,d,d*mult,code);
+    }
+  }
+  return{nc,adj,trackSet,n:nc.length>>1};
+}
+
+// ── Snap au nœud le plus proche (préférence track/path) ──────────────
+function snap(lat,lon,g){
+  let bi=-1,bd=Infinity,bti=-1,btd=Infinity;
+  for(let i=0;i<g.n;i++){
+    const d=hav(lat,lon,g.nc[i*2],g.nc[i*2+1]);
+    if(d<bd){bd=d;bi=i;}
+    if(g.trackSet.has(i)&&d<btd){btd=d;bti=i;}
+  }
+  // Préférer un nœud track si < 3× la distance du nœud le plus proche
+  if(bti>=0&&btd<bd*3)return{idx:bti,dist:btd};
+  return{idx:bi,dist:bd};
+}
+
+// ── Dijkstra (utilise gUsed pour les pénalités d'arêtes) ─────────────
+class MinH{
+  constructor(){this.h=[];}
+  push(c,i){this.h.push([c,i]);this._u(this.h.length-1);}
+  pop(){const t=this.h[0];const l=this.h.pop();if(this.h.length){this.h[0]=l;this._d(0);}return t;}
+  empty(){return!this.h.length;}
+  _u(i){while(i>0){const p=(i-1)>>1;if(this.h[p][0]<=this.h[i][0])break;[this.h[p],this.h[i]]=[this.h[i],this.h[p]];i=p;}}
+  _d(i){const n=this.h.length;for(;;){let m=i,l=2*i+1,r=2*i+2;if(l<n&&this.h[l][0]<this.h[m][0])m=l;if(r<n&&this.h[r][0]<this.h[m][0])m=r;if(m===i)break;[this.h[m],this.h[i]]=[this.h[i],this.h[m]];i=m;}}
+}
+
+function dijkstra(s,e,g){
+  const n=g.n;
+  const cost=new Float64Array(n).fill(Infinity);
+  const real=new Float64Array(n);
+  const prev=new Int32Array(n).fill(-1);
+  const phw=new Uint8Array(n);
+  cost[s]=0;
+  const heap=new MinH();heap.push(0,s);
+  while(!heap.empty()){
+    const[c,cur]=heap.pop();
+    if(c>cost[cur])continue;
+    if(cur===e)break;
+    const a=g.adj[cur];
+    for(let i=0;i<a.length;i+=4){
+      const to=a[i],d=a[i+1],ec=a[i+2],hw=a[i+3];
+      const pen=gUsed.get(ek(cur,to))||1;
+      const nc2=c+ec*pen;
+      if(nc2<cost[to]){cost[to]=nc2;real[to]=real[cur]+d;prev[to]=cur;phw[to]=hw;heap.push(nc2,to);}
+    }
+  }
+  if(cost[e]===Infinity)return null;
+  const path=[],stats={};let cur=e;
+  while(cur!==-1){
+    path.unshift(cur);
+    const p=prev[cur];
+    if(p!==-1){const h=HW_NAMES[phw[cur]];stats[h]=(stats[h]||0)+hav(g.nc[cur*2],g.nc[cur*2+1],g.nc[p*2],g.nc[p*2+1]);}
+    cur=p;
+  }
+  return{path,real:real[e],stats};
+}
+
+// ── Marche exploratoire (cœur de l'algorithme) ──────────────────────
+//
+//  Avance pas à pas sur le graphe :
+//  · À chaque nœud, évalue tous les voisins et choisit le meilleur
+//    selon un score combinant :
+//      - bonus offroad (track/path très favorisés selon trailPct)
+//      - direction (s'éloigner du départ dans les 70% du budget)
+//      - pénalité de réutilisation de l'arête (anti aller-retour)
+//      - légère variation aléatoire (diversité de la trace)
+//  · Pas de waypoints imposés → la trace suit naturellement les chemins
+//  · Retour via Dijkstra avec pénalités ×BTPEN sur les arêtes déjà
+//    empruntées → chemin de retour différent du chemin aller
+//
+function explorerWalk(startIdx, budgetMeters, g, trailPct){
+  const t=(trailPct-30)/70; // 0..1 (30%=route, 100%=offroad max)
+  const path=[startIdx];
+  const hwStats={};
+  const localUsed=new Map(); // compteur local d'utilisation des arêtes
+  let dist=0, cur=startIdx;
+  const sLat=g.nc[startIdx*2], sLon=g.nc[startIdx*2+1];
+
+  while(dist<budgetMeters){
+    const a=g.adj[cur];
+    if(!a.length)break;
+    const curLat=g.nc[cur*2], curLon=g.nc[cur*2+1];
+    const curD=hav(curLat,curLon,sLat,sLon); // distance actuelle au départ
+
+    let best=null, bestScore=-Infinity;
+
+    for(let i=0;i<a.length;i+=4){
+      const to=a[i], d=a[i+1], hw=a[i+3];
+      const key=ek(cur,to);
+      const uses=localUsed.get(key)||0;
+      if(uses>=2)continue; // max 2 passages par arête (évite le ping-pong)
+
+      const toLat=g.nc[to*2], toLon=g.nc[to*2+1];
+      const toD=hav(toLat,toLon,sLat,sLon);
+
+      // ── Score direction : s'éloigner dans les 70% du budget ──────
+      const phase=dist/budgetMeters;
+      const movingAway=(toD-curD)/250; // >0 si on s'éloigne
+      const dirScore=phase<0.7 ? movingAway*1.5 : 0;
+
+      // ── Score offroad ─────────────────────────────────────────────
+      //  track/path : bonus fort (3..6 selon trailPct)
+      //  routes     : pénalité croissante avec hw et trailPct
+      const offroadScore = hw<=1
+        ? 3.0 + t*3.0           // track/path : 3.0 → 6.0
+        : -(hw)*(1.0+t*2.5);    // unclassified=-2→-7, secondary=-5→-17
+
+      // ── Pénalité réutilisation ────────────────────────────────────
+      const reuse=uses*8.0;
+
+      // ── Bruit aléatoire léger (diversité) ────────────────────────
+      const noise=(Math.random()-0.5)*1.2;
+
+      const score=dirScore+offroadScore-reuse+noise;
+      if(score>bestScore){bestScore=score;best={to,d,hw,key};}
+    }
+
+    if(!best)break; // bloqué : toutes arêtes saturées
+
+    localUsed.set(best.key,(localUsed.get(best.key)||0)+1);
+    path.push(best.to);
+    dist+=best.d;
+    cur=best.to;
+    const hwName=HW_NAMES[best.hw];
+    hwStats[hwName]=(hwStats[hwName]||0)+best.d;
+  }
+
+  return{path,dist,endIdx:cur,hwStats};
+}
+
+// ── Pénalise les arêtes du chemin aller (pour Dijkstra retour) ───────
+function penalize(path){
+  for(let i=1;i<path.length;i++){
+    const k=ek(path[i-1],path[i]);
+    gUsed.set(k,(gUsed.get(k)||1)*BTPEN);
+  }
+}
+
+// ── Construit le fichier GPX ──────────────────────────────────────────
+function buildGPX(pts,sLat,sLon,name,desc){
+  const trk=pts.map(p=>`    <trkpt lat="${p[0].toFixed(6)}" lon="${p[1].toFixed(6)}"/>`).join('\n');
+  const wpt=`  <wpt lat="${sLat.toFixed(6)}" lon="${sLon.toFixed(6)}"><name>Départ/Arrivée — ${name}</name></wpt>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Enduro GPX Studio" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata><name>${name}</name><desc>${desc}</desc></metadata>\n${wpt}\n  <trk><name>${name}</name><trkseg>\n${trk}\n  </trkseg></trk>\n</gpx>`;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  UI MODALE
+// ══════════════════════════════════════════════════════════════════════
+function openModal(){document.getElementById('modal-overlay').classList.add('open');}
+function closeModal(){document.getElementById('modal-overlay').classList.remove('open');}
+function closeModalOutside(e){if(e.target===document.getElementById('modal-overlay'))closeModal();}
+
+function mSlider(){
+  const d=parseInt(document.getElementById('m-dist').value);
+  const t=parseInt(document.getElementById('m-trail').value);
+  document.getElementById('m-d-val').textContent=d+' km';
+  document.getElementById('m-d-lbl').textContent=d+' km';
+  document.getElementById('m-t-val').textContent=t+'%';
+  document.getElementById('m-t-lbl').textContent=t+'%';
+}
+
+function mProg(pct,title){
+  document.getElementById('m-pf').style.width=Math.round(pct)+'%';
+  document.getElementById('m-pp').textContent=Math.round(pct)+'%';
+  if(title)document.getElementById('m-pt').textContent=title;
+}
+function mLog(msg,cls=''){
+  const el=document.getElementById('m-log');
+  const d=document.createElement('div');
+  if(cls)d.className=cls;
+  d.textContent=msg;el.appendChild(d);el.scrollTop=el.scrollHeight;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  GÉNÉRATION PRINCIPALE
+// ══════════════════════════════════════════════════════════════════════
+async function startGenerate(){
+  const locVal=document.getElementById('m-loc').value.trim();
+  const km=parseInt(document.getElementById('m-dist').value);
+  const trailPct=parseInt(document.getElementById('m-trail').value);
+  if(!locVal){alert('Saisis un lieu de départ.');return;}
+
+  gpxData=null;
+  document.getElementById('m-log').innerHTML='';
+  document.getElementById('m-prog').className='progress-section on';
+  const btn=document.getElementById('m-btn');
+  btn.disabled=true;
+  btn.innerHTML='<span class="spin"></span>Génération en cours...';
+
+  try{
+    // ── Géocodage ───────────────────────────────────────────────────
+    mProg(2,'Géocodage...');
+    let sLat,sLon,sName;
+    const m=locVal.match(/^(-?\d+\.?\d*)[,;\s]+(-?\d+\.?\d*)$/);
+    if(m){sLat=parseFloat(m[1]);sLon=parseFloat(m[2]);sName='Départ';}
+    else{const g=await geocode(locVal);sLat=g.lat;sLon=g.lon;sName=g.name;}
+    mLog(`Lieu : ${sName} (${sLat.toFixed(4)}, ${sLon.toFixed(4)})`,'info');
+
+    // ── Coûts de routage (plafonnés à ×8.5 max) ────────────────────
+    const t=(trailPct-30)/70;
+    const costs={
+      track:   1.0,
+      path:    0.9,
+      unclassified: parseFloat((1.5+t*2.0).toFixed(2)), // 1.5 → 3.5
+      tertiary:     parseFloat((3.0+t*2.5).toFixed(2)), // 3.0 → 5.5
+      secondary:    parseFloat((5.0+t*3.5).toFixed(2))  // 5.0 → 8.5
+    };
+
+    // ── Fetch OSM ───────────────────────────────────────────────────
+    // Rayon = 45% de la distance cible (largement suffisant pour la boucle)
+    const fetchRadius=Math.min(km*0.45,38);
+    mLog(`Fetch OSM — rayon ${fetchRadius.toFixed(0)} km autour du départ`,'info');
+    const els=await fetchOSM(sLat,sLon,fetchRadius);
+    if(!els.length)throw new Error('Aucun chemin OSM récupéré. Vérifie la connexion.');
+    const cnt={};for(const e of els){const h=e.tags?.highway||'?';cnt[h]=(cnt[h]||0)+1;}
+    mLog(`${els.length} voies — ${Object.entries(cnt).map(([k,v])=>k+':'+v).join(' ')}`,'info');
+
+    // ── Graphe ──────────────────────────────────────────────────────
+    mProg(55,'Construction du graphe...');await sleep(10);
+    const g=buildGraph(els,costs);
+    mLog(`Graphe : ${g.n} nœuds | ${g.trackSet.size} nœuds track/path`,'info');
+
+    const startSnap=snap(sLat,sLon,g);
+    mLog(`Départ → ${Math.round(startSnap.dist)} m du réseau (${g.trackSet.has(startSnap.idx)?'track':'route'})`,
+      startSnap.dist>600?'warn':'ok');
+
+    // ── Boucle de correction de distance ────────────────────────────
+    //
+    //  Principe :
+    //  1. Marche aller sur les chemins (explorerWalk, budget ~52% cible)
+    //  2. Pénalise les arêtes empruntées (×BTPEN)
+    //  3. Dijkstra retour (emprunte d'autres chemins grâce aux pénalités)
+    //  4. Calcule l'écart distance réelle vs cible
+    //  5. Ajuste le budget (facteur amorti) et recommence si nécessaire
+    //
+    let budget=km*1000*0.52;
+    let bestResult=null, bestDelta=Infinity;
+
+    for(let iter=0;iter<MAX_ITER;iter++){
+      gUsed=new Map(); // reset pénalités pour chaque tentative
+      mProg(60+iter*8,`Tentative ${iter+1}/${MAX_ITER} — budget ${(budget/1000).toFixed(1)} km...`);
+      await sleep(8);
+
+      // Phase 1 : marche exploratoire sans waypoints
+      const walk=explorerWalk(startSnap.idx,budget,g,trailPct);
+
+      // Phase 2 : pénalise les arêtes aller, puis Dijkstra retour
+      penalize(walk.path);
+      let ret=dijkstra(walk.endIdx,startSnap.idx,g);
+
+      // Fallback si Dijkstra échoue : on retire les pénalités et on réessaie
+      if(!ret){
+        mLog(`Dijkstra retour bloqué — tentative sans pénalités`,'warn');
+        gUsed=new Map();
+        ret=dijkstra(walk.endIdx,startSnap.idx,g);
+      }
+
+      // Assemblage trace
+      const allPts=walk.path.map(idx=>[g.nc[idx*2],g.nc[idx*2+1]]);
+      let totalDist=walk.dist;
+      const st={...walk.hwStats};
+
+      if(ret){
+        totalDist+=ret.real;
+        for(const[h,d]of Object.entries(ret.stats))st[h]=(st[h]||0)+d;
+        ret.path.slice(1).forEach(idx=>allPts.push([g.nc[idx*2],g.nc[idx*2+1]]));
+      }else{
+        allPts.push([sLat,sLon]); // liaison directe en dernier recours
+        mLog(`Retour direct (impossible de router)`,'warn');
+      }
+
+      const actualKm=totalDist/1000;
+      const delta=Math.abs(actualKm-km)/km;
+      mLog(`Tentative ${iter+1}: ${actualKm.toFixed(1)} km (objectif ${km} km, écart ${(delta*100).toFixed(0)}%)`,
+        delta<=TOL?'ok':'warn');
+
+      if(delta<bestDelta){bestDelta=delta;bestResult={allPts:[...allPts],totalDist,st};}
+      if(delta<=TOL){mLog('Distance dans la tolérance ±20%','ok');break;}
+
+      // Correction du budget (pas amorti pour éviter les oscillations)
+      budget*=Math.pow(km/actualKm,0.65);
+      if(iter<MAX_ITER-1)mLog(`  → Nouveau budget : ${(budget/1000).toFixed(2)} km`);
+    }
+
+    if(!bestResult)throw new Error('Impossible de générer une trace valide.');
+    if(bestDelta>TOL)mLog(`Meilleur résultat : ${(bestDelta*100).toFixed(0)}% d'écart`,'warn');
+
+    const{allPts,totalDist,st}=bestResult;
+    const offT=(st.track||0)+(st.path||0);
+    const trPct=totalDist>0?Math.round(100*offT/totalDist):0;
+
+    mProg(100,'Terminé !');
+    mLog('──────────────────────────────','info');
+    mLog(`Distance : ${(totalDist/1000).toFixed(1)} km (objectif ${km} km)`,'info');
+    mLog(`Chemins/sentiers : ${trPct}%  |  Routes : ${100-trPct}%`,'info');
+
+    // ── GPX & affichage ─────────────────────────────────────────────
+    const safeName=sName.toLowerCase().replace(/[^a-z0-9]/g,'_');
+    gpxName=`enduro_${safeName}_${Math.round(totalDist/1000)}km.gpx`;
+    gpxData=buildGPX(allPts,sLat,sLon,
+      `Enduro ~${km}km — ${sName}`,
+      `Circuit ${(totalDist/1000).toFixed(1)}km, ${trPct}% chemins. OpenStreetMap.`);
+
+    document.getElementById('btn-dl').style.display='';
+    renderGPX(parseGPX(gpxData),trPct);
+    setTimeout(closeModal,600);
+
+  }catch(err){
+    mLog('ERREUR : '+err.message,'err');
+    mProg(0,'Erreur');
+  }
+  btn.disabled=false;
+  btn.innerHTML='Générer la trace';
+}
+
+function dlGPX(){
+  if(!gpxData)return;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([gpxData],{type:'application/gpx+xml'}));
+  a.download=gpxName;a.click();
+}
+</script>
+</body>
+</html>
