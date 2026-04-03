@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html class="light" lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Precision Explorer v2 | Enduro GPX Generator</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script>
+    tailwind.config = { darkMode:'class', theme:{ extend:{ colors:{ background:'#0b1220', primary:'#f59e0b', primary2:'#fb923c' }, fontFamily:{ headline:['Manrope','sans-serif'], body:['Inter','sans-serif'] }, boxShadow:{ glow:'0 0 24px rgba(245,158,11,.18)' } } } }
+  </script>
+  <style>
+    .material-symbols-outlined{font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24;vertical-align:middle}
+    input[type="range"]{accent-color:#f59e0b}
+    #viewer-map .leaflet-control-attribution{background:rgba(15,23,42,.85);color:#cbd5e1}
+    #viewer-map .leaflet-control-attribution a{color:#fcd34d}
+    .scrollbar-thin::-webkit-scrollbar{width:8px;height:8px}.scrollbar-thin::-webkit-scrollbar-thumb{background:#334155;border-radius:999px}
+    #map-container.fullscreen{position:fixed!important;inset:0!important;z-index:900!important;border-radius:0!important;margin:0!important;border:none!important}
+  </style>
+</head>
+<body class="bg-slate-950 font-body text-slate-100 overflow-hidden h-screen flex flex-col">
+
+  <!-- ═══════════════════ HEADER ═══════════════════ -->
+  <header class="fixed top-0 left-0 right-0 z-50 h-16 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-6">
+    <div class="flex items-center gap-6 min-w-0">
+      <div>
+        <h1 class="font-headline text-xl font-extrabold tracking-tight text-white">Precision Explorer <span class="text-amber-400 text-sm">v2</span></h1>
+        <p class="text-xs text-slate-400">BRouter + Dijkstra &middot; Traces GPX enduro</p>
+      </div>
+      <div class="hidden lg:flex items-center gap-3 rounded-xl bg-slate-900/70 px-4 py-2 border border-slate-800">
+        <span class="material-symbols-outlined text-amber-400">route</span>
+        <div>
+          <p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Trace affichee</p>
+          <p class="text-sm font-semibold text-slate-100" id="pv-name">Aucune</p>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <input type="file" id="preview-file" accept=".gpx" class="hidden"/>
+      <button class="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-800" onclick="document.getElementById('preview-file').click()"><span class="material-symbols-outlined text-base">upload_file</span>Charger GPX</button>
+      <button class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-400 px-4 py-2 text-sm font-bold text-slate-950 shadow-glow hover:brightness-110 disabled:opacity-50" id="fitbtn" onclick="fitPreviewRoute()" disabled><span class="material-symbols-outlined text-base">my_location</span>Recentrer</button>
+    </div>
+  </header>
+
+  <!-- ═══════════════════ MAIN ═══════════════════ -->
+  <main class="flex-1 pt-16 pb-12 pr-0 xl:pr-80">
+    <div class="h-full flex flex-col">
+
+      <!-- Stats bar (collapsible) -->
+      <section class="border-b border-slate-800 bg-slate-950/30 backdrop-blur-sm">
+        <button onclick="toggleStatsBar()" class="w-full flex items-center justify-between px-6 py-2 text-[10px] uppercase tracking-[0.14em] text-slate-400 hover:text-slate-200 transition-colors">
+          <span class="flex items-center gap-2"><span class="material-symbols-outlined text-sm">bar_chart</span>Statistiques</span>
+          <span id="stats-toggle-icon" class="material-symbols-outlined text-base">expand_less</span>
+        </button>
+        <div id="stats-grid" class="grid grid-cols-2 lg:grid-cols-5 gap-4 px-6 pb-4">
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Distance</p><p class="font-headline text-2xl font-extrabold text-white" id="pv-dist">&mdash;</p></div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Off-road reel</p><p class="font-headline text-2xl font-extrabold text-white" id="pv-offroad">&mdash;</p></div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Waypoints / points</p><p class="font-headline text-2xl font-extrabold text-white" id="pv-points">&mdash;</p></div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Moteur utilise</p><p class="font-headline text-lg font-extrabold text-white" id="pv-engine">&mdash;</p></div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Configuration</p><div class="mt-1 flex flex-wrap gap-2 text-xs text-slate-300" id="summary"></div></div>
+        </div>
+      </section>
+
+      <!-- Map -->
+      <section class="flex-1 p-6 min-h-0">
+        <div id="map-container" class="relative h-full overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl shadow-black/30">
+          <div id="viewer-map" class="h-full w-full"></div>
+          <div class="absolute left-4 top-4 z-[450] max-w-md rounded-2xl border border-slate-800 bg-slate-950/75 backdrop-blur-md px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Statut</p><p class="mt-1 text-sm font-semibold text-slate-100" id="status">Pret.</p></div>
+          <div class="absolute right-4 top-4 z-[450] flex flex-col gap-2">
+            <button id="mapmode-pan" onclick="setMapMode('pan')" title="Deplacer" class="flex items-center justify-center w-10 h-10 rounded-xl border border-slate-700 bg-slate-950/80 backdrop-blur-md text-slate-300 hover:bg-slate-800"><span class="material-symbols-outlined text-lg">pan_tool</span></button>
+            <button id="mapmode-waypoint" onclick="setMapMode('waypoint')" title="Waypoints" class="flex items-center justify-center w-10 h-10 rounded-xl border border-slate-700 bg-slate-950/80 backdrop-blur-md text-slate-300 hover:bg-slate-800"><span class="material-symbols-outlined text-lg">add_location</span></button>
+            <button onclick="toggleMapFullscreen()" title="Plein ecran" class="flex items-center justify-center w-10 h-10 rounded-xl border border-slate-700 bg-slate-950/80 backdrop-blur-md text-slate-300 hover:bg-slate-800"><span id="fullscreen-icon" class="material-symbols-outlined text-lg">fullscreen</span></button>
+          </div>
+          <div class="absolute left-4 bottom-4 right-4 z-[450] rounded-2xl border border-slate-800 bg-slate-950/75 backdrop-blur-md p-4">
+            <button onclick="toggleLog()" class="w-full flex items-center justify-between mb-1 text-left">
+              <div><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Journal de generation</p><p class="text-xs text-slate-400">BRouter, Overpass, Dijkstra, export</p></div>
+              <span id="log-toggle-icon" class="material-symbols-outlined text-base text-slate-400 flex-shrink-0 ml-2">expand_less</span>
+            </button>
+            <div id="log-body"><pre id="log" class="scrollbar-thin mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-xs text-slate-300"></pre></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ═══════════════════ ASIDE ═══════════════════ -->
+  <aside class="fixed right-0 top-0 z-40 h-full w-full max-w-xs border-l border-slate-800 bg-slate-950/92 backdrop-blur-xl pt-16 hidden xl:flex flex-col">
+    <div class="scrollbar-thin flex-1 overflow-y-auto p-6">
+      <div class="mb-8"><h2 class="font-headline text-lg font-bold text-slate-100">Parametres de trace</h2><p class="text-xs text-slate-400">BRouter + Dijkstra fallback</p></div>
+      <div class="space-y-6">
+
+        <!-- Mode -->
+        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
+          <label class="mb-3 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Mode de generation</label>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <button id="m-boucle" onclick="setMode('boucle')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Boucle auto</button>
+            <button id="m-waypoints" onclick="setMode('waypoints')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Par waypoints</button>
+          </div>
+        </section>
+
+        <!-- Profile -->
+        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
+          <div class="mb-3 flex items-center justify-between"><label class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Profil de routage</label><span class="text-xs font-semibold text-amber-400" id="profile-label">Enduro</span></div>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <button id="p-enduro" onclick="setProfile('enduro')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Enduro</button>
+            <button id="p-balade" onclick="setProfile('balade')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Balade</button>
+            <button id="p-route" onclick="setProfile('route')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Route</button>
+          </div>
+          <p class="mt-2 text-[10px] text-slate-500" id="profile-hint">Sentiers &amp; pistes off-road (BRouter trekking)</p>
+        </section>
+
+        <!-- Engine -->
+        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
+          <div class="mb-3 flex items-center justify-between"><label class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Moteur de routage</label><span class="text-xs font-semibold text-sky-400" id="engine-label">Auto</span></div>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <button id="e-auto" onclick="setEngine('auto')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Auto</button>
+            <button id="e-brouter" onclick="setEngine('brouter')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">BRouter</button>
+            <button id="e-dijkstra" onclick="setEngine('dijkstra')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Dijkstra</button>
+          </div>
+          <p class="mt-2 text-[10px] text-slate-500" id="engine-hint">BRouter prioritaire, Dijkstra en secours</p>
+        </section>
+
+        <!-- Sliders -->
+        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800 space-y-4">
+          <div id="section-dist"><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Distance</span><span><span id="dist-out">160</span> km</span></div><input id="dist" type="range" min="30" max="300" step="5" value="160" class="w-full"/></div>
+          <div><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Off-road</span><span><span id="trail-out">80</span>%</span></div><input id="trail" type="range" min="30" max="98" step="1" value="80" class="w-full"/></div>
+          <div><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Single track</span><span><span id="single-out">60</span>%</span></div><input id="single" type="range" min="0" max="100" step="5" value="60" class="w-full"/></div>
+          <div><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Technicite</span><span><span id="tech-out">3</span>/5</span></div><input id="tech" type="range" min="1" max="5" step="1" value="3" class="w-full"/><p id="tech-hint" class="mt-2 text-xs text-slate-400">Niveau 3/5 : intermediaire.</p></div>
+          <div id="section-nwp-count"><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Waypoints</span><span><span id="nwp-out">7</span></span></div><input id="nwp" type="range" min="4" max="14" step="1" value="7" class="w-full"/></div>
+          <div><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Setup enduro</span><span id="enduro-caption" class="text-amber-400 normal-case tracking-normal">&mdash;</span></div><div class="h-2 rounded-full bg-slate-800 overflow-hidden"><div id="enduro-meter" class="h-full w-0 bg-gradient-to-r from-sky-500 via-emerald-500 to-orange-400 transition-all"></div></div></div>
+        </section>
+
+        <!-- Shape -->
+        <section id="section-forme" class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
+          <label class="mb-3 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Forme du circuit</label>
+          <div class="grid grid-cols-1 gap-2 text-xs">
+            <button id="s-circle" onclick="setShape('circle')" class="rounded-xl border border-slate-700 px-3 py-2 text-left text-slate-300">Boucle reguliere</button>
+            <button id="s-random" onclick="setShape('random')" class="rounded-xl border border-slate-700 px-3 py-2 text-left text-slate-300">Boucle irreguliere</button>
+            <button id="s-eight" onclick="setShape('eight')" class="rounded-xl border border-slate-700 px-3 py-2 text-left text-slate-300">Double boucle</button>
+          </div>
+        </section>
+
+        <!-- Types -->
+        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
+          <label class="mb-3 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Types de voies <span class="normal-case font-normal text-slate-600">(Dijkstra)</span></label>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <button id="tog-track" onclick="toggleType('track')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Piste</button>
+            <button id="tog-path" onclick="toggleType('path')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Sentier</button>
+            <button id="tog-unclassified" onclick="toggleType('unclassified')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Chemin</button>
+            <button id="tog-tertiary" onclick="toggleType('tertiary')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Petite route</button>
+            <button id="tog-secondary" onclick="toggleType('secondary')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300 col-span-2">Route secondaire</button>
+          </div>
+          <input type="checkbox" id="t-track" class="hidden" checked><input type="checkbox" id="t-path" class="hidden" checked><input type="checkbox" id="t-unclassified" class="hidden" checked><input type="checkbox" id="t-tertiary" class="hidden"><input type="checkbox" id="t-secondary" class="hidden">
+        </section>
+
+        <!-- Cost table (Dijkstra) -->
+        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
+          <label class="mb-3 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Couts Dijkstra <span class="normal-case font-normal text-slate-600">(calibres BRouter)</span></label>
+          <table class="w-full text-xs text-slate-300"><tbody>
+            <tr id="row-track"><td class="py-1">Piste</td><td class="py-1 text-right" id="c-track">&times;1.5</td></tr>
+            <tr id="row-path"><td class="py-1">Sentier</td><td class="py-1 text-right" id="c-path">&times;1.0</td></tr>
+            <tr id="row-unclassified"><td class="py-1">Chemin</td><td class="py-1 text-right" id="c-unc">&times;6.0</td></tr>
+            <tr id="row-tertiary"><td class="py-1">Petite route</td><td class="py-1 text-right" id="c-ter">&times;7.0</td></tr>
+            <tr id="row-secondary"><td class="py-1">Route secondaire</td><td class="py-1 text-right" id="c-sec">&times;8.5</td></tr>
+          </tbody></table>
+        </section>
+
+        <!-- Waypoints -->
+        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
+          <div class="mb-3 flex items-center justify-between gap-2"><label class="block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Waypoints de la trace</label><button id="clear-map-wpts" type="button" onclick="clearManualWaypoints()" class="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300 hover:border-red-400 hover:text-red-300">Effacer</button></div>
+          <div id="viewer-wpts" class="scrollbar-thin max-h-56 overflow-auto space-y-2 text-xs text-slate-300"><div class="rounded-xl bg-slate-950/60 px-3 py-2 text-slate-500">Clique sur la carte pour ajouter des points de passage.</div></div>
+        </section>
+
+      </div>
+    </div>
+    <!-- Action buttons -->
+    <div class="border-t border-slate-800 bg-slate-950 p-6 space-y-3">
+      <button id="gpxbtn" onclick="generate()" class="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-400 px-4 py-4 font-headline text-sm font-extrabold text-slate-950 shadow-glow hover:brightness-110"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">auto_graph</span>Generer le GPX</button>
+      <button id="cancelbtn" onclick="cancelGeneration()" class="hidden w-full items-center justify-center gap-2 rounded-xl border border-red-700 bg-red-950/50 px-4 py-3 text-sm font-semibold text-red-300 hover:bg-red-900/50"><span class="material-symbols-outlined text-base">cancel</span>Annuler</button>
+      <button id="downloadbtn" onclick="downloadGpx()" class="hidden w-full items-center justify-center gap-2 rounded-xl border border-emerald-700 bg-emerald-950/50 px-4 py-3 text-sm font-semibold text-emerald-300 hover:bg-emerald-900/50"><span class="material-symbols-outlined text-base">download</span>Telecharger le GPX</button>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════ FOOTER ═══════════════════ -->
+  <footer class="fixed bottom-0 left-0 right-0 xl:right-80 h-12 border-t border-slate-800 bg-slate-950/90 backdrop-blur-md px-6 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-slate-500">
+    <div class="flex items-center gap-6"><span class="text-amber-400 font-bold">Precision Explorer v2 &copy; 2026</span><span>BRouter &middot; Overpass &middot; OpenStreetMap &middot; Leaflet</span></div>
+    <div class="hidden md:flex items-center gap-2"><span class="material-symbols-outlined text-xs">gps_fixed</span><span>Dual engine routing</span></div>
+  </footer>
+
+  <!-- ═══════════════════ SCRIPTS ═══════════════════ -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+  "use strict";
+
+  /* ══════════════════════════════════════════════════
+     1. CONFIGURATION & CONSTANTS
+     ══════════════════════════════════════════════════ */
+
+  let currentProfile='enduro',currentShape='circle',cancelController=null,currentMode='boucle',currentEngine='auto',lastGpxString=null,lastEngineUsed='';
+
+  const TYPES=['track','path','unclassified','tertiary','secondary'];
+  const TYPE_LABELS={track:'Piste',path:'Sentier',unclassified:'Chemin',tertiary:'Petite route',secondary:'Route secondaire'};
+  const OFFROAD_TYPES=new Set(['track','path','unclassified']);
+
+  // Profiles: affects both BRouter and Dijkstra
+  const PROFILES={
+    enduro:{label:'Enduro',hint:'Sentiers & pistes off-road (BRouter trekking)',brouter:'trekking'},
+    balade:{label:'Balade',hint:'Chemins & voies mixtes (BRouter fastbike)',brouter:'fastbike'},
+    route:{label:'Route',hint:'Routes & chemins surs (BRouter safety)',brouter:'safety'}
+  };
+
+  // Engine config
+  const ENGINE_HINTS={
+    auto:'BRouter prioritaire, Dijkstra en secours',
+    brouter:'Routage serveur BRouter (rapide)',
+    dijkstra:'Routage local Overpass + graphe OSM (lent mais autonome)'
+  };
+
+  // BRouter
+  const BROUTER_SERVER='https://brouter.de/brouter';
+
+  // Dijkstra: Overpass servers
+  const OVERPASS_SERVERS=['https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter'];
+  const OVERPASS_OK_DELAY=3000,OVERPASS_FAIL_DELAY=2500;
+
+  // BRouter-calibrated highway costs for Dijkstra engine
+  const DIJKSTRA_PROFILE_COSTS={
+    enduro:{track:1.5,path:1.0,unclassified:6.0,tertiary:7.0,secondary:8.5},
+    balade:{track:2.0,path:4.0,unclassified:3.0,tertiary:3.5,secondary:5.0},
+    route:{track:8.0,path:12.0,unclassified:3.0,tertiary:2.0,secondary:1.5}
+  };
+
+  // BRouter-calibrated access hierarchy
+  const ACCESS_TAGS_ORDER=['motorcycle','motorcar','motor_vehicle','vehicle','access'];
+  const ACCESS_DENIED=new Set(['no','private']);
+  const ACCESS_ALLOWED=new Set(['yes','permissive','designated','official']);
+
+  // Surface sets
+  const PAVED_SURFACES=new Set(['asphalt','paved','concrete','concrete:lanes','concrete:plates','paving_stones','sett','cobblestone']);
+  const COMPACT_SURFACES=new Set(['compacted','fine_gravel','gravel','pebblestone','woodchips']);
+  const LOOSE_SURFACES=new Set(['dirt','earth','ground','mud','sand','clay']);
+  const ROUGH_SURFACES=new Set(['rock','rocks','stone','grass','grass_paver']);
+
+  // Labels
+  const TECH_LABELS={1:'facile',2:'accessible',3:'intermediaire',4:'engage',5:'extreme'};
+  const SHAPE_LABELS_UI={circle:'Boucle',random:'Irreguliere',eight:'Double boucle'};
+  const SHAPE_LABELS_DESC={circle:'circulaire',random:'irreguliere',eight:'double boucle'};
+
+  /* ══════════════════════════════════════════════════
+     2. DOM REFS & INPUT HANDLERS
+     ══════════════════════════════════════════════════ */
+
+  const distEl=document.getElementById('dist'),distOut=document.getElementById('dist-out');
+  const trailEl=document.getElementById('trail'),trailOut=document.getElementById('trail-out');
+  const singleEl=document.getElementById('single'),singleOut=document.getElementById('single-out');
+  const techEl=document.getElementById('tech'),techOut=document.getElementById('tech-out');
+  const nwpEl=document.getElementById('nwp'),nwpOut=document.getElementById('nwp-out');
+  const techHintEl=document.getElementById('tech-hint');
+  const enduroMeterEl=document.getElementById('enduro-meter'),enduroCaptionEl=document.getElementById('enduro-caption');
+  const profileLabelEl=document.getElementById('profile-label'),engineLabelEl=document.getElementById('engine-label');
+
+  distEl.oninput=()=>{distOut.textContent=distEl.value;updateSummary()};
+  trailEl.oninput=()=>{trailOut.textContent=trailEl.value;updateSummary()};
+  singleEl.oninput=()=>{singleOut.textContent=singleEl.value;updateSummary()};
+  techEl.oninput=()=>{techOut.textContent=techEl.value;updateEnduroTuning();updateSummary()};
+  nwpEl.oninput=()=>{nwpOut.textContent=nwpEl.value;updateSummary()};
+
+  /* ══════════════════════════════════════════════════
+     3. UTILITY FUNCTIONS
+     ══════════════════════════════════════════════════ */
+
+  const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+  const delay=(ms,signal)=>new Promise((ok,ko)=>{const id=setTimeout(ok,ms);signal?.addEventListener('abort',()=>{clearTimeout(id);ko(new DOMException('Annule','AbortError'))},{once:true})});
+  const technicalityLabel=l=>TECH_LABELS[l]||TECH_LABELS[3];
+  const activeTypes=()=>TYPES.filter(t=>document.getElementById('t-'+t).checked);
+  const keyFromLatLon=(lat,lon)=>`${lat.toFixed(5)},${lon.toFixed(5)}`;
+  const escapeHtml=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const gpxEscape=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  function haversine(lat1,lon1,lat2,lon2){const r=6371000,p=Math.PI/180,dLat=(lat2-lat1)*p,dLon=(lon2-lon1)*p,a=Math.sin(dLat/2)**2+Math.cos(lat1*p)*Math.cos(lat2*p)*Math.sin(dLon/2)**2;return r*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}
+  function slugify(n){return n.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')||'trace'}
+
+  /* ══════════════════════════════════════════════════
+     4. UI FUNCTIONS
+     ══════════════════════════════════════════════════ */
+
+  function cancelGeneration(){if(cancelController)cancelController.abort()}
+
+  function setMode(name){currentMode=name;['boucle','waypoints'].forEach(m=>{const b=document.getElementById('m-'+m);b.classList.toggle('border-amber-400',m===name);b.classList.toggle('bg-amber-400/10',m===name);b.classList.toggle('text-amber-400',m===name)});const isBoucle=name==='boucle';['section-dist','section-nwp-count','section-forme'].forEach(id=>document.getElementById(id).style.display=isBoucle?'':'none');document.getElementById('gpxbtn').textContent=isBoucle?'Generer le GPX':'Generer le parcours'}
+
+  function setProfile(name){currentProfile=name;['enduro','balade','route'].forEach(p=>{const b=document.getElementById('p-'+p);if(!b)return;b.classList.toggle('border-amber-400',p===name);b.classList.toggle('bg-amber-400/10',p===name);b.classList.toggle('text-amber-400',p===name)});const p=PROFILES[name];if(p){profileLabelEl.textContent=p.label;document.getElementById('profile-hint').textContent=p.hint}updateCosts();updateSummary()}
+
+  function setEngine(name){currentEngine=name;['auto','brouter','dijkstra'].forEach(e=>{const b=document.getElementById('e-'+e);b.classList.toggle('border-sky-400',e===name);b.classList.toggle('bg-sky-400/10',e===name);b.classList.toggle('text-sky-400',e===name)});engineLabelEl.textContent=name==='auto'?'Auto':name==='brouter'?'BRouter':'Dijkstra';document.getElementById('engine-hint').textContent=ENGINE_HINTS[name];updateSummary()}
+
+  function syncTypeButton(type,active){const b=document.getElementById('tog-'+type);b.classList.toggle('border-amber-400',active);b.classList.toggle('bg-amber-400/10',active);b.classList.toggle('text-amber-400',active)}
+  function toggleType(type){const input=document.getElementById('t-'+type);input.checked=!input.checked;syncTypeButton(type,input.checked);updateCosts()}
+
+  function setShape(name){currentShape=name;['circle','random','eight'].forEach(s=>{const b=document.getElementById('s-'+s);b.classList.toggle('border-amber-400',s===name);b.classList.toggle('bg-amber-400/10',s===name);b.classList.toggle('text-amber-400',s===name)});updateSummary()}
+
+  function updateEnduroTuning(){const trailPct=parseInt(trailEl.value,10),singlePct=parseInt(singleEl.value,10),techLevel=parseInt(techEl.value,10),score=Math.round(trailPct*.45+singlePct*.35+((techLevel-1)/4)*100*.20);techOut.textContent=techLevel;singleOut.textContent=singlePct;techHintEl.textContent=`Niveau ${techLevel}/5 : ${technicalityLabel(techLevel)}.`;enduroMeterEl.style.width=score+'%';enduroCaptionEl.textContent=`${score}% ready`}
+
+  function updateCosts(){const base=DIJKSTRA_PROFILE_COSTS[currentProfile]||DIJKSTRA_PROFILE_COSTS.enduro,types=activeTypes();document.getElementById('c-track').textContent=types.includes('track')?`\u00d7${base.track}`:'\u2014';document.getElementById('c-path').textContent=types.includes('path')?`\u00d7${base.path}`:'\u2014';document.getElementById('c-unc').textContent=types.includes('unclassified')?`\u00d7${base.unclassified}`:'\u2014';document.getElementById('c-ter').textContent=types.includes('tertiary')?`\u00d7${base.tertiary}`:'\u2014';document.getElementById('c-sec').textContent=types.includes('secondary')?`\u00d7${base.secondary}`:'\u2014';TYPES.forEach(t=>document.getElementById('row-'+t).classList.toggle('opacity-40',!types.includes(t)));updateSummary()}
+
+  function updateSummary(){const types=activeTypes(),eng=currentEngine==='auto'?'Auto':currentEngine==='brouter'?'BR':'DJ',items=[`${distEl.value} km`,`${trailEl.value}% off`,`Tech ${techEl.value}/5`,SHAPE_LABELS_UI[currentShape],`${nwpEl.value} WP`,eng,types.length===TYPES.length?'Toutes voies':types.map(t=>TYPE_LABELS[t]).join(', ')];document.getElementById('summary').innerHTML=items.map(i=>`<span class="rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-200">${i}</span>`).join('')}
+
+  function setStatus(message,state=''){const el=document.getElementById('status');el.textContent=message;el.className=state==='err'?'mt-1 text-sm font-semibold text-red-400':state==='ok'?'mt-1 text-sm font-semibold text-emerald-400':'mt-1 text-sm font-semibold text-slate-100'}
+  function clearLog(){document.getElementById('log').textContent=''}
+  function appendLog(msg){const log=document.getElementById('log');log.textContent+=(log.textContent?'\n':'')+msg;log.scrollTop=log.scrollHeight}
+
+  // Toggles
+  function toggleStatsBar(){const g=document.getElementById('stats-grid'),i=document.getElementById('stats-toggle-icon'),h=g.style.display==='none';g.style.display=h?'':'none';i.textContent=h?'expand_less':'expand_more'}
+  function toggleLog(){const b=document.getElementById('log-body'),i=document.getElementById('log-toggle-icon'),h=b.style.display==='none';b.style.display=h?'':'none';i.textContent=h?'expand_less':'expand_more'}
+  function toggleMapFullscreen(){const c=document.getElementById('map-container'),i=document.getElementById('fullscreen-icon');c.classList.toggle('fullscreen');i.textContent=c.classList.contains('fullscreen')?'fullscreen_exit':'fullscreen';setTimeout(()=>previewState.map.invalidateSize(),100)}
+
+  let mapMode='pan';
+  function setMapMode(mode){mapMode=mode;['pan','waypoint'].forEach(m=>{const b=document.getElementById('mapmode-'+m);b.classList.toggle('border-amber-400',m===mode);b.classList.toggle('bg-amber-400/10',m===mode);b.classList.toggle('text-amber-400',m===mode)});if(mode==='pan'){previewState.map.dragging.enable();previewState.map.getContainer().style.cursor=''}else{previewState.map.getContainer().style.cursor='crosshair'}}
+
+  /* ══════════════════════════════════════════════════
+     5. WAYPOINT GENERATORS
+     ══════════════════════════════════════════════════ */
+
+  function circleWaypoints(lat,lon,km,n){const d=1.45,per=2*n*Math.sin(Math.PI/n),rKm=km/(per*d),rLat=rKm/111,rLon=rKm/(111*Math.cos(lat*Math.PI/180)),pts=[];for(let i=0;i<n;i++){const a=2*Math.PI*i/n-Math.PI/2;pts.push({lat:+(lat+rLat*Math.sin(a)).toFixed(5),lon:+(lon+rLon*Math.cos(a)).toFixed(5),name:`WP${i+1}`})}return pts}
+  function randomWaypoints(lat,lon,km,n){const d=1.5,rKm=km/(2*Math.PI*d),rLat=rKm/111,rLon=rKm/(111*Math.cos(lat*Math.PI/180)),pts=[];for(let i=0;i<n;i++){const base=2*Math.PI*i/n-Math.PI/2,j=(Math.random()-.5)*(2*Math.PI/n)*.7,f=.55+Math.random()*.9;pts.push({lat:+(lat+rLat*f*Math.sin(base+j)).toFixed(5),lon:+(lon+rLon*f*Math.cos(base+j)).toFixed(5),name:`WP${i+1}`})}return pts}
+  function eightWaypoints(lat,lon,km,n){const d=1.45,half=Math.max(2,Math.floor(n/2)),lKm=km/2,per=2*half*Math.sin(Math.PI/half),rKm=lKm/(per*d),rLat=rKm/111,rLon=rKm/(111*Math.cos(lat*Math.PI/180)),pts=[];for(let i=0;i<half;i++){const a=2*Math.PI*i/half-Math.PI/2;pts.push({lat:+(lat+rLat*Math.sin(a)).toFixed(5),lon:+(lon-rLon*1.1+rLon*Math.cos(a)).toFixed(5),name:`WP${i+1}`})}const extra=n-half;for(let i=0;i<extra;i++){const a=2*Math.PI*i/extra-Math.PI/2;pts.push({lat:+(lat+rLat*Math.sin(a)).toFixed(5),lon:+(lon+rLon*1.1+rLon*Math.cos(a)).toFixed(5),name:`WP${half+i+1}`})}return pts}
+
+  /* ══════════════════════════════════════════════════
+     6. BROUTER ENGINE
+     ══════════════════════════════════════════════════ */
+
+  function brouterProfileName(){return PROFILES[currentProfile]?.brouter||'trekking'}
+
+  async function brouterSegment(from,to,signal){
+    const url=`${BROUTER_SERVER}?lonlats=${from.lon},${from.lat}|${to.lon},${to.lat}&profile=${brouterProfileName()}&alternativeidx=0&format=geojson`;
+    const resp=await fetch(url,{signal});
+    if(!resp.ok)throw new Error(`BRouter HTTP ${resp.status}`);
+    const data=await resp.json();
+    if(!data.features?.length)throw new Error('Aucun itineraire BRouter');
+    const feat=data.features[0];
+    return{points:feat.geometry.coordinates.map(([lon,lat])=>({lat,lon})),distance:parseFloat(feat.properties['track-length'])}
+  }
+
+  async function computeRouteBrouter(waypoints,signal){
+    const points=[];let total=0;
+    for(let i=0;i<waypoints.length-1;i++){
+      if(signal?.aborted)throw new DOMException('Annule','AbortError');
+      appendLog(`[BRouter ${i+1}/${waypoints.length-1}] ${waypoints[i].name} \u2192 ${waypoints[i+1].name}`);
+      const seg=await brouterSegment(waypoints[i],waypoints[i+1],signal);
+      (i===0?seg.points:seg.points.slice(1)).forEach(p=>points.push(p));
+      total+=seg.distance;
+      appendLog(`  OK ${(seg.distance/1000).toFixed(1)} km`);
+    }
+    return{points,total,stats:null,engine:'BRouter'}
+  }
+
+  /* ══════════════════════════════════════════════════
+     7. DIJKSTRA ENGINE (Overpass + Graph + A*)
+        Costs calibrated from BRouter dirtbike profiles
+     ══════════════════════════════════════════════════ */
+
+  // --- Access check (BRouter hierarchy) ---
+  function checkMotorcycleAccess(tags){
+    if(!tags)return true;
+    for(const tag of ACCESS_TAGS_ORDER){
+      const v=(tags[tag]||'').toLowerCase();
+      if(!v)continue;
+      if(ACCESS_DENIED.has(v))return false;
+      if(ACCESS_ALLOWED.has(v))return true;
+    }
+    return true;
+  }
+
+  // --- Terrain bias (BRouter-enhanced) ---
+  function terrainBiasFromTags(tags,prefs,highway){
+    if(!checkMotorcycleAccess(tags))return 100;
+    const trailBias=clamp((prefs.trailPct-30)/(98-30),0,1),singleBias=clamp(prefs.singletrackPct/100,0,1),techBias=clamp((prefs.techLevel-1)/4,0,1);
+    let mult=1;
+    const surface=(tags?.surface||'').toLowerCase(),tracktype=(tags?.tracktype||'').toLowerCase(),sacScale=(tags?.sac_scale||'').toLowerCase(),smoothness=(tags?.smoothness||'').toLowerCase(),mtbScale=parseInt(tags?.['mtb:scale']||'',10),lanes=Number(tags?.lanes||0);
+    // Surface bias
+    if(surface){if(PAVED_SURFACES.has(surface))mult*=1.35+trailBias*.35+singleBias*.15;else if(COMPACT_SURFACES.has(surface))mult*=.96-techBias*.08;else if(LOOSE_SURFACES.has(surface))mult*=.88-techBias*.10;else if(ROUGH_SURFACES.has(surface))mult*=techBias>=.5?.80:1.18}
+    // Tracktype bias
+    if(tracktype==='grade1')mult*=1.18+singleBias*.08;
+    if(['grade3','grade4','grade5'].includes(tracktype))mult*=1.08-techBias*.28;
+    // SAC scale
+    if(['mountain_hiking','demanding_mountain_hiking'].includes(sacScale))mult*=1.06-techBias*.20;
+    if(['alpine_hiking','demanding_alpine_hiking','difficult_alpine_hiking'].includes(sacScale))mult*=techBias>=.75?.82:1.55;
+    // Smoothness (BRouter: impassable=50)
+    if(smoothness==='impassable')mult*=techBias>=.5?1.5:3.0;
+    else if(['bad','very_bad','horrible','very_horrible'].includes(smoothness))mult*=techBias>=.5?.90:1.28;
+    // MTB scale (from BRouter dirtbike_enduro)
+    if(!isNaN(mtbScale)&&highway==='path'){if(mtbScale>=5)mult*=techBias>=.5?2.0:5.0;else if(mtbScale>=4)mult*=techBias>=.5?1.5:3.0;else if(mtbScale>=3)mult*=1.2;else if(mtbScale>=2)mult*=techBias>=.5?1.0:1.1}
+    // Highway type bias
+    if(highway==='path')mult*=.92-singleBias*.16;
+    if(highway==='track')mult*=1.02-techBias*.08;
+    if(highway==='secondary')mult*=1.20+trailBias*.20;
+    if(lanes>=2&&['tertiary','secondary'].includes(highway))mult*=1.12;
+    return clamp(mult,.45,100)
+  }
+
+  // --- Bounding boxes ---
+  function buildBboxes(waypoints){const pad=0.10,overlap=0.03,maxSize=0.20,boxes=[];function split(lMin,loMin,lMax,loMax,d){const lr=lMax-lMin,lonr=loMax-loMin;if(d<3&&(lr>maxSize||lonr>maxSize)){for(const fl of[[0,.55],[.45,1]])for(const flon of[[0,.55],[.45,1]])split(lMin+fl[0]*lr-overlap,loMin+flon[0]*lonr-overlap,lMin+fl[1]*lr+overlap,loMin+flon[1]*lonr+overlap,d+1)}else boxes.push([lMin,loMin,lMax,loMax])}for(let i=0;i<waypoints.length-1;i++){const a=waypoints[i],b=waypoints[i+1];split(Math.min(a.lat,b.lat)-pad,Math.min(a.lon,b.lon)-pad,Math.max(a.lat,b.lat)+pad,Math.max(a.lon,b.lon)+pad,0)}return boxes}
+
+  // --- Overpass fetching ---
+  async function fetchTile(bbox,server,types,signal){const[latMin,lonMin,latMax,lonMax]=bbox,filters=types.map(t=>`way["highway"="${t}"](${latMin},${lonMin},${latMax},${lonMax});`).join(''),query=`[out:json][timeout:60];(${filters});out geom tags;`,resp=await fetch(server,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:new URLSearchParams({data:query}),signal}),raw=await resp.text();if(!resp.ok)throw new Error(`HTTP ${resp.status}`);try{const json=JSON.parse(raw);return json.elements||[]}catch(e){const m=raw.match(/<remark>(.*?)<\/remark>/i)||raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);throw new Error(m?m[1].replace(/<[^>]+>/g,' ').trim():'Reponse Overpass invalide')}}
+
+  async function fetchAllTiles(bboxes,types,signal){const all=[],seen=new Set();for(let i=0;i<bboxes.length;i++){if(signal?.aborted)throw new DOMException('Annule','AbortError');appendLog(`[Dijkstra 2/5] Tuile ${i+1}/${bboxes.length}`);let ok=false;for(let attempt=0;attempt<2&&!ok;attempt++){if(attempt>0){appendLog('  Retry 5s...');await delay(5000,signal)}for(const server of OVERPASS_SERVERS){const host=server.replace('https://','').split('/')[0];try{const els=await fetchTile(bboxes[i],server,types,signal);let added=0;for(const el of els){if(seen.has(el.id))continue;seen.add(el.id);all.push(el);added++}appendLog(`  OK ${host} (+${added})`);ok=true;await delay(OVERPASS_OK_DELAY,signal);break}catch(e){if(e.name==='AbortError')throw e;appendLog(`  Echec ${host}: ${e.message}`);await delay(OVERPASS_FAIL_DELAY,signal)}}}if(!ok)appendLog('  Tuile ignoree')}appendLog(`[Dijkstra 2/5] Total ${all.length} chemins OSM`);return all}
+
+  // --- Graph building ---
+  function buildGraph(elements,costMap,prefs){const coords=new Map(),adj=new Map();let edges=0;const ensure=k=>{if(!adj.has(k))adj.set(k,[]);return adj.get(k)};for(const way of elements){if(!way.geometry||way.geometry.length<2)continue;const hw=way.tags?.highway||'track',baseMult=costMap[hw],mult=Number.isFinite(baseMult)?baseMult*terrainBiasFromTags(way.tags||{},prefs,hw):baseMult;if(!Number.isFinite(mult)||mult>=9999)continue;const nodes=way.geometry.map(pt=>{const lat=Number(pt.lat),lon=Number(pt.lon),key=keyFromLatLon(lat,lon);if(!coords.has(key))coords.set(key,{lat,lon});return key});for(let i=1;i<nodes.length;i++){const a=nodes[i-1],b=nodes[i],cA=coords.get(a),cB=coords.get(b),dist=haversine(cA.lat,cA.lon,cB.lat,cB.lon);ensure(a).push({to:b,dist,cost:dist*mult,hw});ensure(b).push({to:a,dist,cost:dist*mult,hw});edges++}}return{coords,adj,edgeCount:edges}}
+
+  function nearestNode(lat,lon,coords){let bestKey=null,bestDist=Infinity;coords.forEach((v,k)=>{const d=haversine(lat,lon,v.lat,v.lon);if(d<bestDist){bestDist=d;bestKey=k}});if(!bestKey)throw new Error('Impossible de raccrocher un waypoint au graphe');return{node:bestKey,dist:bestDist}}
+
+  function healGraph(coords,adj,maxGapM=200){const gs=0.003,grid=new Map();coords.forEach((c,key)=>{const ck=`${Math.floor(c.lat/gs)},${Math.floor(c.lon/gs)}`;if(!grid.has(ck))grid.set(ck,[]);grid.get(ck).push(key)});let added=0;const ensure=k=>{if(!adj.has(k))adj.set(k,[]);return adj.get(k)};coords.forEach((c,key)=>{const kl=Math.floor(c.lat/gs),kn=Math.floor(c.lon/gs);for(let dk=-1;dk<=1;dk++)for(let dn=-1;dn<=1;dn++)for(const nk of(grid.get(`${kl+dk},${kn+dn}`)||[])){if(nk===key)continue;const nc=coords.get(nk),d=haversine(c.lat,c.lon,nc.lat,nc.lon);if(d<=maxGapM){ensure(key).push({to:nk,dist:d,cost:d*1.5,hw:'track'});added++}}});return added}
+
+  function snapWaypoints(waypoints,coords){if(!coords.size)throw new Error('Graphe vide');return waypoints.map(w=>{const{node,dist}=nearestNode(w.lat,w.lon,coords);appendLog(`  ${w.name} (${Math.round(dist)} m)`);return{...w,node}})}
+
+  // --- A* pathfinding ---
+  class MinHeap{constructor(){this.d=[]}push(x){this.d.push(x);this._up(this.d.length-1)}pop(){if(!this.d.length)return null;const t=this.d[0],e=this.d.pop();if(this.d.length){this.d[0]=e;this._dn(0)}return t}_up(i){while(i>0){const p=(i-1)>>1;if(this.d[i].cost>=this.d[p].cost)break;[this.d[i],this.d[p]]=[this.d[p],this.d[i]];i=p}}_dn(i){const n=this.d.length;while(true){let s=i,l=2*i+1,r=l+1;if(l<n&&this.d[l].cost<this.d[s].cost)s=l;if(r<n&&this.d[r].cost<this.d[s].cost)s=r;if(s===i)break;[this.d[i],this.d[s]]=[this.d[s],this.d[i]];i=s}}empty(){return!this.d.length}}
+
+  const reconstructPath=node=>{const p=[];let c=node;while(c){p.push(c.node);c=c.prev}return p.reverse()};
+
+  function aStarRoute(start,goal,adj,coords){if(!adj.has(start)||!adj.has(goal))return null;const gc=coords?.get(goal);const h=k=>{if(!gc||!coords)return 0;const c=coords.get(k);return c?haversine(c.lat,c.lon,gc.lat,gc.lon)*.8:0};const heap=new MinHeap();heap.push({node:start,cost:h(start),g:0,real:0,stats:{},prev:null});const best=new Map([[start,0]]),visited=new Set();while(!heap.empty()){const cur=heap.pop();if(!cur||visited.has(cur.node))continue;visited.add(cur.node);if(cur.node===goal)return{nodes:reconstructPath(cur),length:cur.real,stats:cur.stats};for(const edge of(adj.get(cur.node)||[])){if(visited.has(edge.to))continue;const ng=cur.g+edge.cost;if(ng>=(best.get(edge.to)??Infinity))continue;best.set(edge.to,ng);const st={...cur.stats};st[edge.hw]=(st[edge.hw]||0)+edge.dist;heap.push({node:edge.to,cost:ng+h(edge.to),g:ng,real:cur.real+edge.dist,stats:st,prev:cur})}}return null}
+
+  function fallbackSegment(a,b,steps=40){const pts=[];for(let i=0;i<=steps;i++){const t=i/steps;pts.push({lat:a.lat+t*(b.lat-a.lat),lon:a.lon+t*(b.lon-a.lon)})}return pts}
+
+  // --- Route from graph ---
+  function routeFromGraph(snapped,coords,adj){const points=[],stats={};let total=0,direct=0;const push=p=>{const last=points[points.length-1];if(!last||last.lat!==p.lat||last.lon!==p.lon)points.push({lat:p.lat,lon:p.lon})};for(let i=0;i<snapped.length-1;i++){const s=snapped[i],e=snapped[i+1];appendLog(`  ${s.name} \u2192 ${e.name}`);const r=aStarRoute(s.node,e.node,adj,coords);if(!r){appendLog('    Liaison directe (fallback)');direct++;fallbackSegment(s,e).forEach(push);continue}total+=r.length;Object.entries(r.stats).forEach(([hw,d])=>{stats[hw]=(stats[hw]||0)+d});r.nodes.forEach(k=>{const c=coords.get(k);if(c)push(c)});appendLog(`    OK ${(r.length/1000).toFixed(1)} km`)}const last=snapped[snapped.length-1];push({lat:last.lat,lon:last.lon});return{points,total,stats,direct}}
+
+  // --- Dijkstra pipeline ---
+  async function computeRouteDijkstra(allWaypoints,signal){
+    const types=activeTypes();
+    if(!types.length)throw new Error('Selectionne au moins un type de voie pour Dijkstra.');
+    const baseCosts=DIJKSTRA_PROFILE_COSTS[currentProfile]||DIJKSTRA_PROFILE_COSTS.enduro;
+    const costMap={};for(const t of TYPES)costMap[t]=types.includes(t)?(baseCosts[t]??5.0):Infinity;
+    const prefs={trailPct:parseInt(trailEl.value,10),singletrackPct:parseInt(singleEl.value,10),techLevel:parseInt(techEl.value,10)};
+
+    // 1. Bboxes
+    const bboxes=buildBboxes(allWaypoints);
+    appendLog(`[Dijkstra 1/5] ${bboxes.length} tuiles`);
+
+    // 2. Overpass fetch
+    const elements=await fetchAllTiles(bboxes,types,signal);
+    if(!elements.length)throw new Error('Aucun chemin OSM trouve (Overpass).');
+
+    // 3. Graph
+    appendLog('[Dijkstra 3/5] Construction du graphe');
+    const{coords,adj,edgeCount}=buildGraph(elements,costMap,prefs);
+    const healed=healGraph(coords,adj,200);
+    appendLog(`  ${coords.size} noeuds \u00b7 ${edgeCount} aretes \u00b7 +${healed} liens`);
+
+    // 4. Snap
+    appendLog('[Dijkstra 4/5] Accrochage waypoints');
+    const snapped=snapWaypoints(allWaypoints,coords);
+
+    // 5. Route
+    appendLog('[Dijkstra 5/5] Calcul A*');
+    const result=routeFromGraph(snapped,coords,adj);
+    result.engine='Dijkstra';
+    return result;
+  }
+
+  /* ══════════════════════════════════════════════════
+     8. UNIFIED ROUTING (BRouter + Dijkstra fallback)
+     ══════════════════════════════════════════════════ */
+
+  async function computeRoute(allWaypoints,signal){
+    const engine=currentEngine;
+
+    if(engine==='dijkstra'){
+      appendLog('[Moteur] Dijkstra (selectionne)');
+      return await computeRouteDijkstra(allWaypoints,signal);
+    }
+    if(engine==='brouter'){
+      appendLog('[Moteur] BRouter (selectionne)');
+      return await computeRouteBrouter(allWaypoints,signal);
+    }
+
+    // Auto: try BRouter first, fallback to Dijkstra
+    try{
+      appendLog('[Moteur] Auto \u2192 BRouter...');
+      const result=await computeRouteBrouter(allWaypoints,signal);
+      appendLog('[Moteur] BRouter OK');
+      return result;
+    }catch(err){
+      if(err.name==='AbortError')throw err;
+      appendLog(`[Moteur] BRouter echoue: ${err.message}`);
+      appendLog('[Moteur] Basculement \u2192 Dijkstra...');
+      return await computeRouteDijkstra(allWaypoints,signal);
+    }
+  }
+
+  /* ══════════════════════════════════════════════════
+     9. GPX BUILDING & DOWNLOAD
+     ══════════════════════════════════════════════════ */
+
+  function buildGpxString(meta,waypoints,points){const name=`Enduro ~${meta.targetKm}km - ${meta.startName}`,desc=`Circuit enduro ${meta.shapeLabel}, ~${meta.trailPct}% off-road, single ${meta.singletrackPct}%, technicite ${meta.techLevel}/5, voies: ${meta.typesLabel}. Moteur: ${meta.engine||'?'}. Source OpenStreetMap.`;let out='<?xml version="1.0" encoding="UTF-8"?>\r\n<gpx version="1.1" creator="Precision Explorer v2" xmlns="http://www.topografix.com/GPX/1/1">\r\n';out+=`  <metadata>\r\n    <name>${gpxEscape(name)}</name>\r\n    <desc>${gpxEscape(desc)}</desc>\r\n  </metadata>\r\n`;waypoints.forEach(w=>{out+=`  <wpt lat="${w.lat.toFixed(5)}" lon="${w.lon.toFixed(5)}">\r\n    <name>${gpxEscape(w.name)}</name>\r\n  </wpt>\r\n`});out+=`  <trk>\r\n    <name>${gpxEscape(name)}</name>\r\n    <trkseg>\r\n`;points.forEach(p=>{out+=`      <trkpt lat="${p.lat.toFixed(5)}" lon="${p.lon.toFixed(5)}"></trkpt>\r\n`});out+='    </trkseg>\r\n  </trk>\r\n</gpx>\r\n';return out}
+
+  function downloadText(filename,text,mime='text/plain'){const blob=new Blob([text],{type:mime}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}
+  function downloadGpx(){if(!lastGpxString)return;downloadText('trace_enduro.gpx',lastGpxString,'application/gpx+xml')}
+
+  /* ══════════════════════════════════════════════════
+     10. MAP & PREVIEW
+     ══════════════════════════════════════════════════ */
+
+  const previewState={map:L.map('viewer-map',{zoomControl:true}).setView([43.69,2.43],10),routeLayer:null,markers:[],manualMarkers:[],manualWaypoints:[],bounds:null};
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',subdomains:'abcd',maxZoom:19}).addTo(previewState.map);
+
+  function updateViewerEmpty(){document.getElementById('fitbtn').disabled=!(previewState.routeLayer||previewState.manualWaypoints.length)}
+
+  function renderWaypointList(items,editable=false){const box=document.getElementById('viewer-wpts');box.innerHTML='';if(!items.length){box.innerHTML='<div class="rounded-xl bg-slate-950/60 px-3 py-2 text-slate-500">Clique sur la carte pour ajouter des points.</div>';return}items.forEach((w,i)=>{const row=document.createElement('div');row.className='flex items-start gap-2 rounded-xl bg-slate-950/60 px-3 py-2';const btn=document.createElement('button');btn.type='button';btn.className='min-w-0 flex-1 text-left';btn.innerHTML=`<div class="font-semibold text-slate-100">${escapeHtml(w.name)}</div><div class="text-[11px] text-slate-400">${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</div>`;btn.onclick=()=>{previewState.map.setView([w.lat,w.lon],14);(w.marker||previewState.markers[i]||previewState.manualMarkers[i])?.openPopup?.()};row.appendChild(btn);if(editable){const rm=document.createElement('button');rm.type='button';rm.className='rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-red-300 hover:bg-red-500/10';rm.textContent='X';rm.onclick=()=>removeManualWaypoint(i);row.appendChild(rm)}box.appendChild(row)})}
+
+  function refreshManualWaypoints(){previewState.manualMarkers.forEach(m=>previewState.map.removeLayer(m));previewState.manualMarkers=[];previewState.manualWaypoints.forEach((w,i)=>{const m=L.circleMarker([w.lat,w.lon],{radius:6,color:'#fff',weight:2,fillColor:'#38bdf8',fillOpacity:1}).addTo(previewState.map).bindPopup(`<strong>${escapeHtml(w.name)}</strong><br>${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`);w.marker=m;previewState.manualMarkers.push(m)});if(!previewState.routeLayer){renderWaypointList(previewState.manualWaypoints,true);document.getElementById('pv-name').textContent=previewState.manualWaypoints.length?'Waypoints manuels':'Aucune';document.getElementById('pv-dist').textContent='\u2014';document.getElementById('pv-offroad').textContent='\u2014';document.getElementById('pv-points').textContent=`${previewState.manualWaypoints.length} / 0`}updateViewerEmpty()}
+
+  function addManualWaypoint(lat,lon){const pt={name:`PASSAGE ${previewState.manualWaypoints.length+1}`,lat:+lat.toFixed(5),lon:+lon.toFixed(5)};previewState.manualWaypoints.push(pt);if(previewState.manualWaypoints.length>=2)setMode('waypoints');refreshManualWaypoints();setStatus(`Point ajoute : ${pt.name}`,'ok');if(!previewState.routeLayer&&previewState.manualMarkers.length){previewState.bounds=L.featureGroup(previewState.manualMarkers).getBounds()}}
+  function removeManualWaypoint(idx){previewState.manualWaypoints.splice(idx,1);previewState.manualWaypoints.forEach((w,i)=>w.name=`PASSAGE ${i+1}`);refreshManualWaypoints()}
+  function clearManualWaypoints(){previewState.manualWaypoints=[];refreshManualWaypoints();if(!previewState.routeLayer){previewState.bounds=null;document.getElementById('fitbtn').disabled=true}setStatus('Waypoints effaces.','ok')}
+  function clearPreviewLayers(){if(previewState.routeLayer){previewState.map.removeLayer(previewState.routeLayer);previewState.routeLayer=null}previewState.markers.forEach(m=>previewState.map.removeLayer(m));previewState.markers=[];previewState.bounds=null;refreshManualWaypoints()}
+  function fitPreviewRoute(){if(previewState.bounds)previewState.map.fitBounds(previewState.bounds,{padding:[20,20]});else if(previewState.manualMarkers.length)previewState.map.fitBounds(L.featureGroup(previewState.manualMarkers).getBounds(),{padding:[20,20]})}
+  function previewDistance(pts){let t=0;for(let i=1;i<pts.length;i++)t+=haversine(pts[i-1].lat,pts[i-1].lon,pts[i].lat,pts[i].lon);return t}
+
+  async function renderPreview(meta,waypoints,points,route){clearPreviewLayers();document.getElementById('fitbtn').disabled=false;previewState.routeLayer=L.polyline(points.map(p=>[p.lat,p.lon]),{color:'#f59e0b',weight:4,opacity:.95,smoothFactor:1}).addTo(previewState.map);previewState.bounds=previewState.routeLayer.getBounds();fitPreviewRoute();waypoints.forEach((w,i)=>{const isS=i===0,isF=i===waypoints.length-1,color=isS?'#22c55e':isF?'#ef4444':'#f59e0b';const m=L.circleMarker([w.lat,w.lon],{radius:isS||isF?7:5,color:'#fff',weight:2,fillColor:color,fillOpacity:1}).addTo(previewState.map).bindPopup(`<strong>${escapeHtml(w.name)}</strong><br>${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`);w.marker=m;previewState.markers.push(m)});renderWaypointList(waypoints,false);const totalDist=route?.total||previewDistance(points),offDist=Object.entries(route?.stats||{}).reduce((s,[hw,v])=>s+(OFFROAD_TYPES.has(hw)?v:0),0),offPct=route?.stats?Math.round(offDist/totalDist*100):0;document.getElementById('pv-name').textContent=meta.startName||meta.name||'Trace';document.getElementById('pv-dist').textContent=`${(totalDist/1000).toFixed(1)} km`;document.getElementById('pv-offroad').textContent=route?.stats?`${offPct}%`:'\u2014';document.getElementById('pv-points').textContent=`${waypoints.length} / ${points.length}`;document.getElementById('pv-engine').textContent=route?.engine||'\u2014';updateViewerEmpty();setTimeout(()=>previewState.map.invalidateSize(),50)}
+
+  // GPX file import
+  function parseGpxText(text){const p=new DOMParser(),xml=p.parseFromString(text,'application/xml');if(xml.querySelector('parsererror'))throw new Error('GPX invalide.');const wpts=Array.from(xml.getElementsByTagName('wpt')).map((w,i)=>({name:w.getElementsByTagName('name')[0]?.textContent||`WP${i+1}`,lat:parseFloat(w.getAttribute('lat')),lon:parseFloat(w.getAttribute('lon'))}));const pts=Array.from(xml.getElementsByTagName('trkpt')).map(t=>({lat:parseFloat(t.getAttribute('lat')),lon:parseFloat(t.getAttribute('lon'))}));const name=xml.getElementsByTagName('name')[0]?.textContent||'Trace GPX';if(!pts.length)throw new Error('Aucun point dans ce GPX.');return{name,waypoints:wpts,points:pts}}
+  async function loadPreviewFile(file){const text=await file.text(),parsed=parseGpxText(text),first=parsed.points[0],wpts=parsed.waypoints.length?parsed.waypoints:[{name:parsed.name,lat:first.lat,lon:first.lon}];await renderPreview({startName:parsed.name,name:parsed.name},wpts,parsed.points,null);setStatus(`GPX importe : ${parsed.name}`,'ok')}
+  document.getElementById('preview-file').addEventListener('change',async ev=>{const f=ev.target.files?.[0];if(!f)return;try{await loadPreviewFile(f)}catch(e){setStatus('Erreur : '+e.message,'err')}finally{ev.target.value=''}});
+
+  previewState.map.on('click',ev=>{if(mapMode==='waypoint')addManualWaypoint(ev.latlng.lat,ev.latlng.lng)});
+
+  /* ══════════════════════════════════════════════════
+     11. MAIN GENERATION
+     ══════════════════════════════════════════════════ */
+
+  async function generate(){
+    const trailPct=parseInt(trailEl.value,10),singletrackPct=parseInt(singleEl.value,10),techLevel=parseInt(techEl.value,10),types=activeTypes();
+    const manualWaypoints=previewState.manualWaypoints.map((w,i)=>({name:w.name||`PASSAGE ${i+1}`,lat:w.lat,lon:w.lon}));
+
+    if(currentMode==='waypoints'&&manualWaypoints.length<2){setStatus('Pose au moins 2 points sur la carte.','err');return}
+    if(currentMode==='boucle'&&!manualWaypoints.length){setStatus('Pose un point de depart sur la carte.','err');return}
+
+    const btnGpx=document.getElementById('gpxbtn'),btnCancel=document.getElementById('cancelbtn'),gpxLabel=btnGpx.innerHTML;
+    cancelController=new AbortController();const signal=cancelController.signal;
+    btnGpx.disabled=true;btnCancel.classList.remove('hidden');btnCancel.classList.add('flex');
+    lastGpxString=null;document.getElementById('downloadbtn').classList.add('hidden');document.getElementById('downloadbtn').classList.remove('flex');
+    clearLog();setStatus('Preparation...');
+    btnGpx.innerHTML='<span class="material-symbols-outlined animate-pulse">progress_activity</span> Generation...';
+
+    try{
+      let allWaypoints,startName;
+      if(currentMode==='waypoints'){
+        allWaypoints=manualWaypoints;startName=manualWaypoints[0].name;
+        setStatus(`Mode waypoints \u00b7 ${manualWaypoints.length} points`,'ok');
+      }else{
+        const targetKm=parseInt(distEl.value,10),nWp=parseInt(nwpEl.value,10),startLat=manualWaypoints[0].lat,startLon=manualWaypoints[0].lon;
+        startName=manualWaypoints[0].name||'Depart';
+        setStatus(`Depart : ${startLat.toFixed(4)}, ${startLon.toFixed(4)}`,'ok');
+        const builder=currentShape==='random'?randomWaypoints:currentShape==='eight'?eightWaypoints:circleWaypoints;
+        const midWp=manualWaypoints.length>1?manualWaypoints.slice(1):builder(startLat,startLon,targetKm,nWp);
+        allWaypoints=[{name:`DEPART - ${startName}`,lat:startLat,lon:startLon},...midWp,{name:`ARRIVEE - ${startName}`,lat:startLat,lon:startLon}];
+      }
+
+      appendLog(`[Config] ${allWaypoints.length} waypoints \u00b7 profil ${currentProfile} \u00b7 moteur ${currentEngine}`);
+
+      // Route via unified engine
+      const route=await computeRoute(allWaypoints,signal);
+      if(!route.points.length)throw new Error('Trace vide.');
+
+      lastEngineUsed=route.engine||'?';
+      const meta={startName,targetKm:Math.round(route.total/1000),shapeLabel:SHAPE_LABELS_DESC[currentShape],trailPct,singletrackPct,techLevel,typesLabel:types.map(t=>TYPE_LABELS[t]).join(', '),engine:lastEngineUsed};
+      await renderPreview(meta,allWaypoints,route.points,route);
+
+      const offDist=Object.entries(route.stats||{}).reduce((s,[hw,v])=>s+(OFFROAD_TYPES.has(hw)?v:0),0);
+      const offPct=route.total&&route.stats?Math.round(offDist/route.total*100):null;
+      const offStr=offPct!==null?` \u00b7 ${offPct}% off-road`:'';
+      setStatus(`Trace generee \u00b7 ${(route.total/1000).toFixed(1)} km${offStr} \u00b7 ${lastEngineUsed}`,'ok');
+
+      lastGpxString=buildGpxString(meta,allWaypoints,route.points);
+      document.getElementById('downloadbtn').classList.remove('hidden');document.getElementById('downloadbtn').classList.add('flex');
+
+    }catch(error){
+      if(error.name==='AbortError'){appendLog('Generation annulee.');setStatus('Generation annulee.','err')}
+      else{appendLog('Erreur : '+error.message);setStatus('Erreur : '+error.message,'err')}
+    }finally{
+      cancelController=null;btnCancel.classList.add('hidden');btnCancel.classList.remove('flex');btnGpx.disabled=false;btnGpx.innerHTML=gpxLabel;
+    }
+  }
+
+  /* ══════════════════════════════════════════════════
+     12. INITIALIZATION
+     ══════════════════════════════════════════════════ */
+
+  updateEnduroTuning();
+  setShape('circle');
+  setProfile('enduro');
+  setEngine('auto');
+  setMode('boucle');
+  setMapMode('pan');
+  updateCosts();
+  setStatus('Pret.');
+  document.getElementById('log').textContent='Journal de generation (BRouter / Dijkstra)';
+
+  </script>
+</body>
+</html>
