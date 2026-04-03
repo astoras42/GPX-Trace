@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python generate_enduro_gpx.py)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(where python:*)",
+      "Bash(start:*)"
+    ]
+  }
+}
