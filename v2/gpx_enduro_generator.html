@@ -224,8 +224,6 @@
 
   function haversine(lat1,lon1,lat2,lon2){const r=6371000,p=Math.PI/180,dLat=(lat2-lat1)*p,dLon=(lon2-lon1)*p,a=Math.sin(dLat/2)**2+Math.cos(lat1*p)*Math.cos(lat2*p)*Math.sin(dLon/2)**2;return r*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}
 
-  // Coordinate key for trail graph junctions (~0.1m precision)
-  function coordKey(lat,lon){return`${lat.toFixed(6)},${lon.toFixed(6)}`}
   function polylineLength(pts){let d=0;for(let i=1;i<pts.length;i++)d+=haversine(pts[i-1].lat,pts[i-1].lon,pts[i].lat,pts[i].lon);return d}
   function activeTypes(){return[...DIFFICULTY_LEVELS[currentDifficulty].types,'tertiary','secondary']}
   function getRoutingPrefs(){const d=currentDifficulty;return{trailPct:80,singletrackPct:d>=3?60:d>=2?30:0,techLevel:d+1}}
@@ -261,18 +259,18 @@
      ══════════════════════════════════════════════════ */
 
   async function fetchTrailNetwork(lat,lon,radiusM,signal){
+    // Only fetch trail types (no roads - BRouter handles road connections)
     const trailTypes=DIFFICULTY_LEVELS[currentDifficulty].types;
     const trailFilters=trailTypes.map(t=>`way["highway"="${t}"](around:${radiusM},${lat},${lon});`).join('');
-    const roadFilters=`way["highway"="tertiary"](around:${radiusM},${lat},${lon});way["highway"="secondary"](around:${radiusM},${lat},${lon});way["highway"="residential"](around:${radiusM},${lat},${lon});`;
-    const query=`[out:json][timeout:90];(${trailFilters}${roadFilters});out geom tags;`;
+    const query=`[out:json][timeout:90];(${trailFilters});out geom tags;`;
     for(const server of OVERPASS_SERVERS){
       try{
-        appendLog(`[Reseau] Requete ${server.split('/')[2]}...`);
+        appendLog(`[Reseau] Requete ${server.split('/')[2]} r=${(radiusM/1000).toFixed(0)}km...`);
         const resp=await fetch(server,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:new URLSearchParams({data:query}),signal});
-        if(!resp.ok)continue;
+        if(!resp.ok){appendLog(`[Reseau] HTTP ${resp.status}`);continue}
         const data=await resp.json();
         const ways=(data.elements||[]).filter(e=>e.type==='way'&&e.geometry?.length>=2);
-        appendLog(`[Reseau] ${ways.length} voies chargees`);
+        appendLog(`[Reseau] ${ways.length} pistes/chemins charges`);
         return ways;
       }catch(e){if(e.name==='AbortError')throw e;appendLog(`[Reseau] Echec: ${e.message}`)}
     }
@@ -286,18 +284,24 @@
      ══════════════════════════════════════════════════ */
 
   function buildTrailGraph(ways){
-    // nodes: coordKey -> {lat,lon}
-    // edges: coordKey -> [{to,dist,hw,wayId,points:[{lat,lon}...]}]
+    // Use a spatial grid to snap nearby coordinates together (within ~10m)
+    const SNAP=0.0001; // ~11m
+    function snapKey(lat,lon){return`${(Math.round(lat/SNAP)*SNAP).toFixed(5)},${(Math.round(lon/SNAP)*SNAP).toFixed(5)}`}
+
     const nodes=new Map(),edges=new Map();
-    const nodeCount=new Map(); // how many ways touch each node
+    const nodeCount=new Map();
     const ensure=k=>{if(!edges.has(k))edges.set(k,[])};
 
-    // First pass: register all nodes and count usage
+    // First pass: register all nodes and count usage per way
     for(const way of ways){
       if(!way.geometry||way.geometry.length<2)continue;
-      const pts=way.geometry.map(p=>({lat:Number(p.lat),lon:Number(p.lon)}));
-      const keys=pts.map(p=>{const k=coordKey(p.lat,p.lon);nodes.set(k,p);return k});
-      // Count endpoint usage (junctions)
+      const keys=new Set();
+      for(const p of way.geometry){
+        const k=snapKey(Number(p.lat),Number(p.lon));
+        if(!nodes.has(k))nodes.set(k,{lat:Number(p.lat),lon:Number(p.lon)});
+        keys.add(k);
+      }
+      // Each unique snapped key touched by this way
       for(const k of keys)nodeCount.set(k,(nodeCount.get(k)||0)+1);
     }
 
@@ -306,62 +310,89 @@
       if(!way.geometry||way.geometry.length<2)continue;
       const hw=way.tags?.highway||'track';
       const pts=way.geometry.map(p=>({lat:Number(p.lat),lon:Number(p.lon)}));
-      const keys=pts.map(p=>coordKey(p.lat,p.lon));
+      const keys=pts.map(p=>snapKey(p.lat,p.lon));
 
-      // Find junction indices (endpoints + nodes used by multiple ways)
+      // Find junction indices: endpoints + nodes shared by multiple ways
       const junctions=[0];
       for(let i=1;i<keys.length-1;i++){
         if((nodeCount.get(keys[i])||0)>1)junctions.push(i);
       }
       junctions.push(keys.length-1);
 
-      // Create edges between consecutive junctions
       for(let j=0;j<junctions.length-1;j++){
         const iA=junctions[j],iB=junctions[j+1];
         if(iA===iB)continue;
         const segPts=pts.slice(iA,iB+1);
         const dist=polylineLength(segPts);
-        if(dist<1)continue; // skip trivial
+        if(dist<5)continue;
         const kA=keys[iA],kB=keys[iB];
+        if(kA===kB)continue; // loop to self after snap
         ensure(kA);ensure(kB);
-        const edge={to:kB,dist,hw,wayId:way.id,points:segPts};
-        const edgeRev={to:kA,dist,hw,wayId:way.id,points:[...segPts].reverse()};
-        edges.get(kA).push(edge);
-        edges.get(kB).push(edgeRev);
+        edges.get(kA).push({to:kB,dist,hw,wayId:way.id,points:segPts});
+        edges.get(kB).push({to:kA,dist,hw,wayId:way.id,points:[...segPts].reverse()});
       }
     }
 
-    // Identify dead-ends: nodes with exactly 1 edge
-    const deadEnds=new Set();
-    for(const[k,edgeList]of edges){
-      // Count unique neighbors
-      const neighbors=new Set(edgeList.map(e=>e.to));
-      if(neighbors.size===1)deadEnds.add(k);
+    // Also connect trail endpoints that are very close but didn't snap
+    // (different ways ending within 50m of each other)
+    const HEAL_DIST=50;
+    const gs=0.0005;
+    const grid=new Map();
+    for(const[k]of edges){
+      const n=nodes.get(k);if(!n)continue;
+      const gk=`${Math.floor(n.lat/gs)},${Math.floor(n.lon/gs)}`;
+      if(!grid.has(gk))grid.set(gk,[]);
+      grid.get(gk).push(k);
+    }
+    let healed=0;
+    for(const[k]of edges){
+      const n=nodes.get(k);if(!n)continue;
+      const gl=Math.floor(n.lat/gs),gn=Math.floor(n.lon/gs);
+      for(let dl=-1;dl<=1;dl++)for(let dn=-1;dn<=1;dn++){
+        for(const nk of(grid.get(`${gl+dl},${gn+dn}`)||[])){
+          if(nk===k)continue;
+          if(edges.get(k).some(e=>e.to===nk))continue; // already connected
+          const nn=nodes.get(nk);
+          const d=haversine(n.lat,n.lon,nn.lat,nn.lon);
+          if(d<=HEAL_DIST){
+            edges.get(k).push({to:nk,dist:d,hw:'track',wayId:-1,points:[n,nn]});
+            edges.get(nk).push({to:k,dist:d,hw:'track',wayId:-1,points:[nn,n]});
+            healed++;
+          }
+        }
+      }
     }
 
-    appendLog(`[Graphe] ${nodes.size} noeuds, ${Math.floor([...edges.values()].reduce((s,e)=>s+e.length,0)/2)} segments, ${deadEnds.size} culs-de-sac`);
+    // Dead-ends: nodes with exactly 1 unique neighbor
+    const deadEnds=new Set();
+    for(const[k,edgeList]of edges){
+      const neighbors=new Set(edgeList.map(e=>e.to));
+      if(neighbors.size<=1)deadEnds.add(k);
+    }
+
+    const segCount=Math.floor([...edges.values()].reduce((s,e)=>s+e.length,0)/2);
+    appendLog(`[Graphe] ${edges.size} jonctions, ${segCount} segments, ${deadEnds.size} culs-de-sac, ${healed} connexions`);
     return{nodes,edges,deadEnds};
   }
 
-  // Measure total trail length reachable from a dead-end before hitting a junction
   function measureDeadEndTrail(startKey,edges){
     let totalDist=0,curKey=startKey;
     const visited=new Set([startKey]);
     while(true){
       const neighbors=(edges.get(curKey)||[]).filter(e=>!visited.has(e.to));
-      if(neighbors.length!==1)break; // junction or true end
-      const edge=neighbors[0];
-      totalDist+=edge.dist;
-      visited.add(edge.to);
-      curKey=edge.to;
+      if(neighbors.length!==1)break;
+      totalDist+=neighbors[0].dist;
+      visited.add(neighbors[0].to);
+      curKey=neighbors[0].to;
     }
     return totalDist;
   }
 
-  // Find nearest trail node from a lat/lon
-  function findNearestTrailNode(lat,lon,graphNodes,trailTypes){
+  // Find nearest graph junction node (must have edges)
+  function findNearestTrailNode(lat,lon,graphNodes,graphEdges){
     let bestKey=null,bestDist=Infinity;
-    for(const[k,n]of graphNodes){
+    for(const[k]of graphEdges){
+      const n=graphNodes.get(k);if(!n)continue;
       const d=haversine(lat,lon,n.lat,n.lon);
       if(d<bestDist){bestDist=d;bestKey=k}
     }
@@ -407,7 +438,7 @@
     const sFrom=nearestNode(from.lat,from.lon,coords),sTo=nearestNode(to.lat,to.lon,coords);
     const r=aStarRoute(sFrom.node,sTo.node,adj,coords);
     if(!r)return{points:fallbackSegment(from,to),distance:haversine(from.lat,from.lon,to.lat,to.lon)};
-    const pts=r.nodes.map(k=>coords.get(k)).filter(Boolean);
+    const pts=reconstructPath(r.nodes).map(k=>coords.get(k)).filter(Boolean);
     return{points:pts,distance:r.length,stats:r.stats};
   }
 
@@ -484,179 +515,159 @@
 
   async function generateTrailRoute(startLat,startLon,targetKm,signal){
     const targetM=targetKm*1000;
-    const tolerance=targetKm<=50?5000:targetM*0.10; // +/-5km or 10%
+    const tolerance=targetKm<=50?5000:targetM*0.10;
     const halfTarget=targetM/2;
 
-    // 1. Fetch trail network
-    const radiusM=Math.min(targetKm*350,50000); // ~radius to cover half-loop
-    appendLog(`[Trail] Chargement reseau r=${(radiusM/1000).toFixed(0)}km...`);
+    // 1. Fetch trail network (trails only, adapted radius)
+    const radiusM=Math.min(Math.max(targetKm*300,5000),50000);
     const ways=await fetchTrailNetwork(startLat,startLon,radiusM,signal);
     if(!ways.length)throw new Error('Aucune piste/chemin dans la zone');
 
-    // 2. Build graph
-    const graph=buildTrailGraph(ways);
-    const{nodes:gNodes,edges:gEdges,deadEnds}=graph;
-    const trailTypes=new Set(DIFFICULTY_LEVELS[currentDifficulty].types);
-    const isTrail=hw=>trailTypes.has(hw);
+    // 2. Build trail graph
+    const{nodes:gNodes,edges:gEdges,deadEnds}=buildTrailGraph(ways);
+    if(!gEdges.size)throw new Error('Graphe de pistes vide');
 
-    // 3. Find start node on the trail graph
-    const startSnap=findNearestTrailNode(startLat,startLon,gNodes,trailTypes);
+    // 3. Snap start to nearest trail junction
+    const startSnap=findNearestTrailNode(startLat,startLon,gNodes,gEdges);
     if(!startSnap||startSnap.dist>5000)throw new Error('Aucune piste a moins de 5km du depart');
     const startKey=startSnap.key;
+    appendLog(`[Trail] Depart accroche a ${startSnap.dist.toFixed(0)}m`);
+
+    // 4. If start is far from trail, route to it first via BRouter
     const startNode=gNodes.get(startKey);
-    appendLog(`[Trail] Depart accroche a ${(startSnap.dist).toFixed(0)}m`);
-
-    // 4. Navigation state
-    const usedEdges=new Set(); // "wayId:fromKey:toKey" - edges already traversed
     const allPoints=[];
-    const allWaypoints=[{name:'DEPART',lat:startLat,lon:startLon}];
-    let totalDist=0,curKey=startKey,wpCount=0;
-    let phase='outbound'; // 'outbound' or 'return'
-
-    function edgeId(e,fromKey){return`${e.wayId}:${fromKey}:${e.to}`}
-    function edgeIdRev(e,fromKey){return`${e.wayId}:${e.to}:${fromKey}`}
-    function isUsed(e,fromKey){return usedEdges.has(edgeId(e,fromKey))||usedEdges.has(edgeIdRev(e,fromKey))}
-    function markUsed(e,fromKey){usedEdges.add(edgeId(e,fromKey));usedEdges.add(edgeIdRev(e,fromKey))}
-
-    function inStartZone(nodeKey){
-      const n=gNodes.get(nodeKey);
-      return n?haversine(startLat,startLon,n.lat,n.lon)<=START_ZONE_RADIUS:false;
+    let totalDist=0;
+    if(startSnap.dist>100){
+      try{
+        const seg=await routeSegment({lat:startLat,lon:startLon},{lat:startNode.lat,lon:startNode.lon},signal);
+        seg.points.forEach(p=>allPoints.push(p));
+        totalDist+=seg.distance||0;
+        appendLog(`  Route vers piste: ${(seg.distance/1000).toFixed(1)}km`);
+      }catch(e){if(e.name==='AbortError')throw e}
     }
 
-    // Score an edge for selection
+    const allWaypoints=[{name:'DEPART',lat:startLat,lon:startLon}];
+    const usedEdges=new Set();
+    let curKey=startKey,wpCount=0,phase='outbound';
+
+    function edgeUid(e,fromKey){return`${e.wayId}:${fromKey}:${e.to}`}
+    function isUsed(e,fromKey){return usedEdges.has(edgeUid(e,fromKey))||usedEdges.has(edgeUid({wayId:e.wayId,to:fromKey},e.to))}
+    function markUsed(e,fromKey){usedEdges.add(edgeUid(e,fromKey));usedEdges.add(edgeUid({wayId:e.wayId,to:fromKey},e.to))}
+    function inStartZone(nodeKey){const n=gNodes.get(nodeKey);return n?haversine(startLat,startLon,n.lat,n.lon)<=START_ZONE_RADIUS:false}
+
+    // Score an edge
     function scoreEdge(e,fromKey){
       const toNode=gNodes.get(e.to);
       if(!toNode)return-Infinity;
       const distToStart=haversine(startLat,startLon,toNode.lat,toNode.lon);
       const used=isUsed(e,fromKey);
 
-      // In return phase, allow reuse only in start zone
       if(used){
         if(phase==='return'&&inStartZone(fromKey)&&inStartZone(e.to))return 0.5+Math.random()*0.3;
-        return-Infinity; // forbidden
+        return-Infinity;
       }
 
-      // Dead-end check: if target is dead-end, measure length
+      // Dead-end: skip if too short or would blow budget
       if(deadEnds.has(e.to)){
         const deLen=measureDeadEndTrail(e.to,gEdges)+e.dist;
-        if(deLen<MIN_DEADEND_LENGTH)return-Infinity; // too short, skip
-        // Accept long dead-ends with slight penalty (aller-retour)
+        if(deLen<MIN_DEADEND_LENGTH)return-Infinity;
         const budget=phase==='outbound'?halfTarget-totalDist:targetM-totalDist;
-        if(deLen*2>budget*0.7)return-Infinity; // would eat too much budget
+        if(deLen*2>budget*0.7)return-Infinity;
       }
 
-      // Base score: prefer trails over roads
-      let score=isTrail(e.hw)?3.0:0.5;
-
-      // Longer segments are better (more trail per decision)
+      let score=3.0; // all edges are trails (graph has only trails)
       score+=Math.min(e.dist/2000,1.5);
 
-      // Direction bonus
       if(phase==='outbound'){
-        // Favor going away from start
         score+=Math.min(distToStart/3000,2.0);
       }else{
-        // Favor going toward start
         const curNode=gNodes.get(fromKey);
-        const curDistToStart=curNode?haversine(startLat,startLon,curNode.lat,curNode.lon):0;
-        if(distToStart<curDistToStart)score+=2.0;
-        else score-=0.5;
+        const curDist=curNode?haversine(startLat,startLon,curNode.lat,curNode.lon):0;
+        score+=distToStart<curDist?2.0:-0.5;
       }
-
-      // Randomness
       score+=Math.random()*0.8;
       return score;
     }
 
-    // Navigate via roads to the nearest trail (max 3km)
-    async function bridgeToNearestTrail(fromKey,signal){
+    // Bridge: find nearest unvisited trail within 3km via BRouter
+    async function bridgeToTrail(fromKey,signal){
       const fromNode=gNodes.get(fromKey);
       if(!fromNode)return null;
 
-      // BFS on road edges to find nearest trail entry within 3km
-      const queue=[{key:fromKey,dist:0,path:[]}];
-      const visited=new Set([fromKey]);
-      let bestTrailEntry=null,bestDist=Infinity;
-
-      while(queue.length){
-        const cur=queue.shift();
-        if(cur.dist>MAX_ROAD_BETWEEN_TRAILS)continue;
-        for(const e of(gEdges.get(cur.key)||[])){
-          if(visited.has(e.to))continue;
-          visited.add(e.to);
-          const newDist=cur.dist+e.dist;
-          if(newDist>MAX_ROAD_BETWEEN_TRAILS)continue;
-          const newPath=[...cur.path,e];
-
-          // Check if destination has trail edges available
-          const hasTrail=(gEdges.get(e.to)||[]).some(ne=>isTrail(ne.hw)&&!isUsed(ne,e.to));
-          if(hasTrail&&newDist<bestDist){
-            bestDist=newDist;
-            bestTrailEntry={key:e.to,dist:newDist,path:newPath};
-          }
-          queue.push({key:e.to,dist:newDist,path:newPath});
-        }
+      // Find all junction nodes with unused trail edges, within 3km
+      const candidates=[];
+      for(const[k,edgeList]of gEdges){
+        if(k===fromKey)continue;
+        const n=gNodes.get(k);if(!n)continue;
+        const d=haversine(fromNode.lat,fromNode.lon,n.lat,n.lon);
+        if(d>MAX_ROAD_BETWEEN_TRAILS)continue;
+        const hasUnused=edgeList.some(e=>!isUsed(e,k));
+        if(hasUnused)candidates.push({key:k,node:n,dist:d});
       }
+      if(!candidates.length)return null;
 
-      if(!bestTrailEntry)return null;
-
-      // Route via BRouter for the road segments
-      const destNode=gNodes.get(bestTrailEntry.key);
-      try{
-        const seg=await routeSegment(fromNode,destNode,signal);
-        appendLog(`  Route -> piste: ${(seg.distance/1000).toFixed(1)}km`);
-        // Mark path edges as used
-        for(const e of bestTrailEntry.path)markUsed(e,e.to);
-        return{key:bestTrailEntry.key,points:seg.points,distance:seg.distance};
-      }catch(e){
-        if(e.name==='AbortError')throw e;
-        // Fallback: use graph points directly
-        const pts=[];
-        for(const e of bestTrailEntry.path)pts.push(...e.points.slice(pts.length?1:0));
-        for(const e of bestTrailEntry.path)markUsed(e,e.to);
-        return{key:bestTrailEntry.key,points:pts,distance:bestDist};
+      // Sort by distance, try closest first
+      candidates.sort((a,b)=>a.dist-b.dist);
+      for(const cand of candidates.slice(0,3)){
+        try{
+          const seg=await routeSegment(fromNode,cand.node,signal);
+          if(seg.distance>MAX_ROAD_BETWEEN_TRAILS*1.5)continue; // routed distance too long
+          appendLog(`  Pont route -> piste: ${(seg.distance/1000).toFixed(1)}km`);
+          return{key:cand.key,points:seg.points,distance:seg.distance};
+        }catch(e){if(e.name==='AbortError')throw e}
       }
+      return null;
     }
 
     // 5. Main navigation loop
     appendLog('[Trail] Navigation...');
     let stuckCount=0;
-    const MAX_STUCK=3;
 
     while(totalDist<targetM+tolerance){
       if(signal?.aborted)throw new DOMException('Annule','AbortError');
 
-      // Phase switch at half distance
       if(phase==='outbound'&&totalDist>=halfTarget){
         phase='return';
         appendLog(`[Trail] Phase retour a ${(totalDist/1000).toFixed(1)}km`);
       }
 
-      // Check if we should stop (close enough to target and near start)
+      // Stop condition: near target distance AND near start
       if(phase==='return'&&totalDist>=targetM-tolerance){
-        const curNode=gNodes.get(curKey);
-        if(curNode&&haversine(startLat,startLon,curNode.lat,curNode.lon)<2000){
-          appendLog(`[Trail] Distance cible atteinte: ${(totalDist/1000).toFixed(1)}km`);
+        const cn=gNodes.get(curKey);
+        if(cn&&haversine(startLat,startLon,cn.lat,cn.lon)<2000){
+          appendLog(`[Trail] Distance cible: ${(totalDist/1000).toFixed(1)}km`);
           break;
         }
       }
+      if(totalDist>targetM+tolerance*2){appendLog('[Trail] Depassement max');break}
 
-      // Hard stop if way over budget
-      if(totalDist>targetM+tolerance*2){
-        appendLog(`[Trail] Depassement max, arret`);
-        break;
-      }
-
-      // Get available edges from current node
+      // Available trail edges
       const available=(gEdges.get(curKey)||[])
         .map(e=>({...e,score:scoreEdge(e,curKey)}))
         .filter(e=>e.score>-Infinity)
         .sort((a,b)=>b.score-a.score);
 
-      if(!available.length){
-        // No trail available: try to bridge via road
-        appendLog(`  Impasse a ${(totalDist/1000).toFixed(1)}km, recherche route...`);
-        const bridge=await bridgeToNearestTrail(curKey,signal);
+      if(available.length){
+        // Follow best trail edge
+        const chosen=available[0];
+        const pts=allPoints.length?chosen.points.slice(1):chosen.points;
+        pts.forEach(p=>allPoints.push(p));
+        markUsed(chosen,curKey);
+        totalDist+=chosen.dist;
+        curKey=chosen.to;
+        stuckCount=0;
+
+        // Periodic waypoints
+        const wpInterval=targetM/12;
+        if(totalDist>=(wpCount+1)*wpInterval){
+          wpCount++;
+          const n=gNodes.get(curKey);
+          if(n)allWaypoints.push({name:`WP${wpCount}`,lat:n.lat,lon:n.lon});
+        }
+      }else{
+        // Dead end or all edges used: bridge via road to next trail
+        appendLog(`  Impasse a ${(totalDist/1000).toFixed(1)}km...`);
+        const bridge=await bridgeToTrail(curKey,signal);
         if(bridge){
           const pts=allPoints.length?bridge.points.slice(1):bridge.points;
           pts.forEach(p=>allPoints.push(p));
@@ -665,52 +676,34 @@
           stuckCount=0;
           continue;
         }
-        // Truly stuck
+
         stuckCount++;
-        if(stuckCount>=MAX_STUCK){appendLog('[Trail] Bloque, arret navigation');break}
-        // Try backtrack: pick any used edge toward start
-        const anyEdge=(gEdges.get(curKey)||[]).find(e=>{
+        if(stuckCount>=3){appendLog('[Trail] Bloque, fin navigation');break}
+
+        // Last resort: backtrack toward start on any edge
+        const curNode=gNodes.get(curKey);
+        const bt=(gEdges.get(curKey)||[]).find(e=>{
           const n=gNodes.get(e.to);
-          return n&&haversine(startLat,startLon,n.lat,n.lon)<haversine(startLat,startLon,gNodes.get(curKey).lat,gNodes.get(curKey).lon);
+          return n&&curNode&&haversine(startLat,startLon,n.lat,n.lon)<haversine(startLat,startLon,curNode.lat,curNode.lon);
         });
-        if(anyEdge){
+        if(bt){
           appendLog('  Backtrack...');
-          anyEdge.points.slice(1).forEach(p=>allPoints.push(p));
-          totalDist+=anyEdge.dist;
-          curKey=anyEdge.to;
-          continue;
-        }
-        appendLog('[Trail] Aucune sortie, arret');
-        break;
-      }
-
-      // Pick best edge
-      const chosen=available[0];
-      const pts=allPoints.length?chosen.points.slice(1):chosen.points;
-      pts.forEach(p=>allPoints.push(p));
-      markUsed(chosen,curKey);
-      totalDist+=chosen.dist;
-      curKey=chosen.to;
-      stuckCount=0;
-
-      // Add waypoint periodically
-      const wpInterval=targetM/12;
-      if(totalDist>=(wpCount+1)*wpInterval){
-        wpCount++;
-        const n=gNodes.get(curKey);
-        if(n)allWaypoints.push({name:`WP${wpCount}`,lat:n.lat,lon:n.lon});
+          bt.points.slice(1).forEach(p=>allPoints.push(p));
+          totalDist+=bt.dist;
+          curKey=bt.to;
+        }else{appendLog('[Trail] Aucune sortie');break}
       }
 
       setStatus(`${phase==='outbound'?'Aller':'Retour'} \u00b7 ${(totalDist/1000).toFixed(1)} / ${targetKm} km`);
     }
 
-    // 6. Return to start via routing if not already close
+    // 6. Return to start
     const lastNode=gNodes.get(curKey);
-    const distFromStart=lastNode?haversine(startLat,startLon,lastNode.lat,lastNode.lon):Infinity;
-    if(distFromStart>200){
-      appendLog(`[Trail] Retour au depart (${(distFromStart/1000).toFixed(1)}km)...`);
+    const distHome=lastNode?haversine(startLat,startLon,lastNode.lat,lastNode.lon):Infinity;
+    if(distHome>200){
+      appendLog(`[Trail] Retour au depart (${(distHome/1000).toFixed(1)}km)...`);
       try{
-        const seg=await routeSegment(lastNode||{lat:startLat,lon:startLon},{lat:startLat,lon:startLon},signal);
+        const seg=await routeSegment(lastNode,{lat:startLat,lon:startLon},signal);
         seg.points.slice(1).forEach(p=>allPoints.push(p));
         totalDist+=seg.distance||0;
         appendLog(`  Retour OK ${(seg.distance/1000).toFixed(1)}km`);
@@ -722,26 +715,23 @@
     }
     allWaypoints.push({name:'ARRIVEE',lat:startLat,lon:startLon});
 
-    // 7. Compute stats
+    // 7. Stats from traversed edges
     const stats={};
-    // Re-count from used edges
     for(const eid of usedEdges){
       const parts=eid.split(':');
+      if(parts[1]>parts[2])continue; // count each edge once
       const wid=parseInt(parts[0]);
+      if(wid<0)continue; // healing edges
       const way=ways.find(w=>w.id===wid);
-      const hw=way?.tags?.highway||'track';
-      // Each edge is counted twice (fwd+rev), so we count only one direction
-      if(parts[1]<parts[2]){
-        const fromNode=gNodes.get(parts[1]),toNode=gNodes.get(parts[2]);
-        if(fromNode&&toNode){
-          const d=haversine(fromNode.lat,fromNode.lon,toNode.lat,toNode.lon);
-          stats[hw]=(stats[hw]||0)+d;
-        }
+      if(way){const hw=way.tags?.highway||'track';
+        // Use actual segment geometry for distance
+        const fn=gNodes.get(parts[1]),tn=gNodes.get(parts[2]);
+        if(fn&&tn)stats[hw]=(stats[hw]||0)+haversine(fn.lat,fn.lon,tn.lat,tn.lon);
       }
     }
 
-    appendLog(`[Trail] Trace finale: ${(totalDist/1000).toFixed(1)}km, ${allWaypoints.length} WP`);
-    return{allWaypoints,route:{points:allPoints,total:totalDist,stats,engine:currentEngine==='dijkstra'?'Dijkstra':currentEngine==='brouter'?'BRouter':'Auto (trail)'}};
+    appendLog(`[Trail] Trace: ${(totalDist/1000).toFixed(1)}km, ${allWaypoints.length} WP`);
+    return{allWaypoints,route:{points:allPoints,total:totalDist,stats,engine:'Trail+'+( currentEngine==='dijkstra'?'Dijkstra':'BRouter')}};
   }
 
   /* ══════════════════════════════════════════════════
