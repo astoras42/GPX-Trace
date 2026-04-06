@@ -87,7 +87,7 @@
   <!-- ═══════════════════ ASIDE ═══════════════════ -->
   <aside class="fixed right-0 top-0 z-40 h-full w-full max-w-xs border-l border-slate-800 bg-slate-950/92 backdrop-blur-xl pt-16 hidden xl:flex flex-col">
     <div class="scrollbar-thin flex-1 overflow-y-auto p-6">
-      <div class="mb-8"><h2 class="font-headline text-lg font-bold text-slate-100">Parametres de trace</h2><p class="text-xs text-slate-400">BRouter + Dijkstra fallback</p></div>
+      <div class="mb-8"><h2 class="font-headline text-lg font-bold text-slate-100">Parametres de trace</h2><p class="text-xs text-slate-400">Navigation reseau de pistes</p></div>
       <div class="space-y-6">
 
         <!-- Mode -->
@@ -99,15 +99,15 @@
           </div>
         </section>
 
-        <!-- Profile -->
+        <!-- Difficulty Level -->
         <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
-          <div class="mb-3 flex items-center justify-between"><label class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Profil de routage</label><span class="text-xs font-semibold text-amber-400" id="profile-label">Enduro</span></div>
+          <div class="mb-3 flex items-center justify-between"><label class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Niveau de difficulte</label><span class="text-xs font-semibold text-amber-400" id="difficulty-label">Piste + Chemin</span></div>
           <div class="grid grid-cols-3 gap-2 text-xs">
-            <button id="p-enduro" onclick="setProfile('enduro')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Enduro</button>
-            <button id="p-balade" onclick="setProfile('balade')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Balade</button>
-            <button id="p-route" onclick="setProfile('route')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Route</button>
+            <button id="d-1" onclick="setDifficulty(1)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Piste</button>
+            <button id="d-2" onclick="setDifficulty(2)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">+Chemin</button>
+            <button id="d-3" onclick="setDifficulty(3)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">+Sentier</button>
           </div>
-          <p class="mt-2 text-[10px] text-slate-500" id="profile-hint">Sentiers &amp; pistes off-road (BRouter trekking)</p>
+          <p class="mt-2 text-[10px] text-slate-500" id="difficulty-hint">Pistes et chemins non classifies</p>
         </section>
 
         <!-- Engine -->
@@ -124,48 +124,18 @@
         <!-- Sliders -->
         <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800 space-y-4">
           <div id="section-dist"><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Distance</span><span><span id="dist-out">160</span> km</span></div><input id="dist" type="range" min="30" max="300" step="5" value="160" class="w-full"/></div>
-          <div><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Off-road</span><span><span id="trail-out">80</span>%</span></div><input id="trail" type="range" min="30" max="98" step="1" value="80" class="w-full"/></div>
-          <div><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Single track</span><span><span id="single-out">60</span>%</span></div><input id="single" type="range" min="0" max="100" step="5" value="60" class="w-full"/></div>
-          <div><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Technicite</span><span><span id="tech-out">3</span>/5</span></div><input id="tech" type="range" min="1" max="5" step="1" value="3" class="w-full"/><p id="tech-hint" class="mt-2 text-xs text-slate-400">Niveau 3/5 : intermediaire.</p></div>
-          <div id="section-nwp-count"><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Waypoints</span><span><span id="nwp-out">7</span></span></div><input id="nwp" type="range" min="4" max="14" step="1" value="7" class="w-full"/></div>
-          <div><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Setup enduro</span><span id="enduro-caption" class="text-amber-400 normal-case tracking-normal">&mdash;</span></div><div class="h-2 rounded-full bg-slate-800 overflow-hidden"><div id="enduro-meter" class="h-full w-0 bg-gradient-to-r from-sky-500 via-emerald-500 to-orange-400 transition-all"></div></div></div>
         </section>
 
-        <!-- Generation strategy -->
-        <section id="section-forme" class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
-          <label class="mb-3 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Strategie de generation</label>
-          <div class="grid grid-cols-1 gap-2 text-xs">
-            <button id="s-incremental" onclick="setShape('incremental')" class="rounded-xl border border-slate-700 px-3 py-2 text-left text-slate-300">Incrementale (recommande)</button>
-            <button id="s-scatter" onclick="setShape('scatter')" class="rounded-xl border border-slate-700 px-3 py-2 text-left text-slate-300">Aleatoire rapide</button>
-            <button id="s-circle" onclick="setShape('circle')" class="rounded-xl border border-slate-700 px-3 py-2 text-left text-slate-300">Boucle classique</button>
-          </div>
-          <p class="mt-2 text-[10px] text-slate-500" id="shape-hint">Waypoints places pas-a-pas, anti-revisit, off-road maximise</p>
-        </section>
-
-        <!-- Types -->
+        <!-- Algorithm info -->
         <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
-          <label class="mb-3 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Types de voies <span class="normal-case font-normal text-slate-600">(Dijkstra)</span></label>
-          <div class="grid grid-cols-2 gap-2 text-xs">
-            <button id="tog-track" onclick="toggleType('track')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Piste</button>
-            <button id="tog-path" onclick="toggleType('path')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Sentier</button>
-            <button id="tog-unclassified" onclick="toggleType('unclassified')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Chemin</button>
-            <button id="tog-tertiary" onclick="toggleType('tertiary')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Petite route</button>
-            <button id="tog-secondary" onclick="toggleType('secondary')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300 col-span-2">Route secondaire</button>
+          <label class="mb-3 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Algorithme</label>
+          <div class="space-y-2 text-[11px] text-slate-400">
+            <p>Navigation du reseau de pistes OSM</p>
+            <p>Analyse culs-de-sac &middot; Max 3km route</p>
+            <p>Anti-repetition sauf zone depart (1km)</p>
           </div>
-          <input type="checkbox" id="t-track" class="hidden" checked><input type="checkbox" id="t-path" class="hidden" checked><input type="checkbox" id="t-unclassified" class="hidden" checked><input type="checkbox" id="t-tertiary" class="hidden"><input type="checkbox" id="t-secondary" class="hidden">
         </section>
 
-        <!-- Cost table (Dijkstra) -->
-        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
-          <label class="mb-3 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Couts Dijkstra <span class="normal-case font-normal text-slate-600">(calibres BRouter)</span></label>
-          <table class="w-full text-xs text-slate-300"><tbody>
-            <tr id="row-track"><td class="py-1">Piste</td><td class="py-1 text-right" id="c-track">&times;1.5</td></tr>
-            <tr id="row-path"><td class="py-1">Sentier</td><td class="py-1 text-right" id="c-path">&times;1.0</td></tr>
-            <tr id="row-unclassified"><td class="py-1">Chemin</td><td class="py-1 text-right" id="c-unc">&times;6.0</td></tr>
-            <tr id="row-tertiary"><td class="py-1">Petite route</td><td class="py-1 text-right" id="c-ter">&times;7.0</td></tr>
-            <tr id="row-secondary"><td class="py-1">Route secondaire</td><td class="py-1 text-right" id="c-sec">&times;8.5</td></tr>
-          </tbody></table>
-        </section>
 
         <!-- Waypoints -->
         <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
@@ -199,34 +169,31 @@
      1. CONFIGURATION & CONSTANTS
      ══════════════════════════════════════════════════ */
 
-  let currentProfile='enduro',currentShape='incremental',cancelController=null,currentMode='boucle',currentEngine='auto',lastGpxString=null,lastEngineUsed='';
+  let currentDifficulty=2,cancelController=null,currentMode='boucle',currentEngine='auto',lastGpxString=null,lastEngineUsed='';
 
-  const TYPES=['track','path','unclassified','tertiary','secondary'];
-  const TYPE_LABELS={track:'Piste',path:'Sentier',unclassified:'Chemin',tertiary:'Petite route',secondary:'Route secondaire'};
   const OFFROAD_TYPES=new Set(['track','path','unclassified']);
 
-  // Profiles: affects both BRouter and Dijkstra
-  const PROFILES={
-    enduro:{label:'Enduro',hint:'Sentiers & pistes off-road (BRouter trekking)',brouter:'trekking'},
-    balade:{label:'Balade',hint:'Chemins & voies mixtes (BRouter fastbike)',brouter:'fastbike'},
-    route:{label:'Route',hint:'Routes & chemins surs (BRouter safety)',brouter:'safety'}
+  // Difficulty levels: determines which trail types to navigate
+  const DIFFICULTY_LEVELS={
+    1:{label:'Piste',hint:'Pistes forestieres et agricoles uniquement',types:['track']},
+    2:{label:'Piste + Chemin',hint:'Pistes et chemins non classifies',types:['track','unclassified']},
+    3:{label:'Tout terrain',hint:'Pistes, chemins et sentiers',types:['track','unclassified','path']}
   };
 
   const ENGINE_HINTS={auto:'BRouter prioritaire, Dijkstra en secours',brouter:'Routage serveur BRouter (rapide)',dijkstra:'Routage local Overpass + graphe OSM (lent mais autonome)'};
-  const SHAPE_HINTS={incremental:'Waypoints places pas-a-pas, anti-revisit, off-road maximise',scatter:'Waypoints aleatoires dans la zone off-road, rapide',circle:'Boucle geometrique classique (legacy)'};
-  const SHAPE_LABELS_UI={incremental:'Incremental',scatter:'Aleatoire',circle:'Classique'};
-  const SHAPE_LABELS_DESC={incremental:'incrementale',scatter:'aleatoire',circle:'circulaire'};
 
   const BROUTER_SERVER='https://brouter.de/brouter';
   const OVERPASS_SERVERS=['https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter'];
   const OVERPASS_OK_DELAY=2500,OVERPASS_FAIL_DELAY=2000;
 
-  // BRouter-calibrated costs for Dijkstra
-  const DIJKSTRA_PROFILE_COSTS={
-    enduro:{track:1.5,path:1.0,unclassified:6.0,tertiary:7.0,secondary:8.5},
-    balade:{track:2.0,path:4.0,unclassified:3.0,tertiary:3.5,secondary:5.0},
-    route:{track:8.0,path:12.0,unclassified:3.0,tertiary:2.0,secondary:1.5}
-  };
+  // Trail navigation constants
+  const MAX_ROAD_BETWEEN_TRAILS=3000; // 3km max de route entre 2 pistes
+  const MIN_DEADEND_LENGTH=5000;      // 5km min pour accepter un cul-de-sac
+  const START_ZONE_RADIUS=1000;       // 1km rayon zone depart (reutilisation retour)
+
+  // Dijkstra costs (for manual waypoints fallback)
+  const DIJKSTRA_COSTS={track:1.5,path:1.0,unclassified:6.0,tertiary:7.0,secondary:8.5};
+  const TYPES=['track','path','unclassified','tertiary','secondary'];
 
   const ACCESS_TAGS_ORDER=['motorcycle','motorcar','motor_vehicle','vehicle','access'];
   const ACCESS_DENIED=new Set(['no','private']);
@@ -235,26 +202,15 @@
   const COMPACT_SURFACES=new Set(['compacted','fine_gravel','gravel','pebblestone','woodchips']);
   const LOOSE_SURFACES=new Set(['dirt','earth','ground','mud','sand','clay']);
   const ROUGH_SURFACES=new Set(['rock','rocks','stone','grass','grass_paver']);
-  const TECH_LABELS={1:'facile',2:'accessible',3:'intermediaire',4:'engage',5:'extreme'};
 
   /* ══════════════════════════════════════════════════
      2. DOM REFS & INPUT HANDLERS
      ══════════════════════════════════════════════════ */
 
   const distEl=document.getElementById('dist'),distOut=document.getElementById('dist-out');
-  const trailEl=document.getElementById('trail'),trailOut=document.getElementById('trail-out');
-  const singleEl=document.getElementById('single'),singleOut=document.getElementById('single-out');
-  const techEl=document.getElementById('tech'),techOut=document.getElementById('tech-out');
-  const nwpEl=document.getElementById('nwp'),nwpOut=document.getElementById('nwp-out');
-  const techHintEl=document.getElementById('tech-hint');
-  const enduroMeterEl=document.getElementById('enduro-meter'),enduroCaptionEl=document.getElementById('enduro-caption');
-  const profileLabelEl=document.getElementById('profile-label'),engineLabelEl=document.getElementById('engine-label');
+  const engineLabelEl=document.getElementById('engine-label');
 
   distEl.oninput=()=>{distOut.textContent=distEl.value;updateSummary()};
-  trailEl.oninput=()=>{trailOut.textContent=trailEl.value;updateSummary()};
-  singleEl.oninput=()=>{singleOut.textContent=singleEl.value;updateSummary()};
-  techEl.oninput=()=>{techOut.textContent=techEl.value;updateEnduroTuning();updateSummary()};
-  nwpEl.oninput=()=>{nwpOut.textContent=nwpEl.value;updateSummary()};
 
   /* ══════════════════════════════════════════════════
      3. UTILITY FUNCTIONS
@@ -262,19 +218,15 @@
 
   const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
   const delay=(ms,signal)=>new Promise((ok,ko)=>{const id=setTimeout(ok,ms);signal?.addEventListener('abort',()=>{clearTimeout(id);ko(new DOMException('Annule','AbortError'))},{once:true})});
-  const technicalityLabel=l=>TECH_LABELS[l]||TECH_LABELS[3];
-  const activeTypes=()=>TYPES.filter(t=>document.getElementById('t-'+t).checked);
   const keyFromLatLon=(lat,lon)=>`${lat.toFixed(5)},${lon.toFixed(5)}`;
   const escapeHtml=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const gpxEscape=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
   function haversine(lat1,lon1,lat2,lon2){const r=6371000,p=Math.PI/180,dLat=(lat2-lat1)*p,dLon=(lon2-lon1)*p,a=Math.sin(dLat/2)**2+Math.cos(lat1*p)*Math.cos(lat2*p)*Math.sin(dLon/2)**2;return r*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}
 
-  // Grid cell key for anti-revisit (cells ~500m)
-  const CELL_SIZE=0.0045;
-  function cellKey(lat,lon){return`${Math.floor(lat/CELL_SIZE)},${Math.floor(lon/(CELL_SIZE/Math.cos(lat*Math.PI/180)))}`}
-  function markCells(points,visited){for(const p of points)visited.add(cellKey(p.lat,p.lon))}
-  function countVisitedCells(lat,lon,visited,radiusCells=2){let c=0;const cl=Math.floor(lat/CELL_SIZE),cn=Math.floor(lon/(CELL_SIZE/Math.cos(lat*Math.PI/180)));for(let dl=-radiusCells;dl<=radiusCells;dl++)for(let dn=-radiusCells;dn<=radiusCells;dn++)if(visited.has(`${cl+dl},${cn+dn}`))c++;return c}
+  function polylineLength(pts){let d=0;for(let i=1;i<pts.length;i++)d+=haversine(pts[i-1].lat,pts[i-1].lon,pts[i].lat,pts[i].lon);return d}
+  function activeTypes(){return[...DIFFICULTY_LEVELS[currentDifficulty].types,'tertiary','secondary']}
+  function getRoutingPrefs(){const d=currentDifficulty;return{trailPct:80,singletrackPct:d>=3?60:d>=2?30:0,techLevel:d+1}}
 
   /* ══════════════════════════════════════════════════
      4. UI FUNCTIONS
@@ -282,22 +234,13 @@
 
   function cancelGeneration(){if(cancelController)cancelController.abort()}
 
-  function setMode(name){currentMode=name;['boucle','waypoints'].forEach(m=>{const b=document.getElementById('m-'+m);b.classList.toggle('border-amber-400',m===name);b.classList.toggle('bg-amber-400/10',m===name);b.classList.toggle('text-amber-400',m===name)});const isBoucle=name==='boucle';['section-dist','section-nwp-count','section-forme'].forEach(id=>document.getElementById(id).style.display=isBoucle?'':'none');document.getElementById('gpxbtn').textContent=isBoucle?'Generer le GPX':'Generer le parcours'}
+  function setMode(name){currentMode=name;['boucle','waypoints'].forEach(m=>{const b=document.getElementById('m-'+m);b.classList.toggle('border-amber-400',m===name);b.classList.toggle('bg-amber-400/10',m===name);b.classList.toggle('text-amber-400',m===name)});const isBoucle=name==='boucle';document.getElementById('section-dist').style.display=isBoucle?'':'none';document.getElementById('gpxbtn').textContent=isBoucle?'Generer le GPX':'Generer le parcours'}
 
-  function setProfile(name){currentProfile=name;['enduro','balade','route'].forEach(p=>{const b=document.getElementById('p-'+p);if(!b)return;b.classList.toggle('border-amber-400',p===name);b.classList.toggle('bg-amber-400/10',p===name);b.classList.toggle('text-amber-400',p===name)});const p=PROFILES[name];if(p){profileLabelEl.textContent=p.label;document.getElementById('profile-hint').textContent=p.hint}updateCosts();updateSummary()}
+  function setDifficulty(level){currentDifficulty=level;[1,2,3].forEach(l=>{const b=document.getElementById('d-'+l);if(!b)return;b.classList.toggle('border-amber-400',l===level);b.classList.toggle('bg-amber-400/10',l===level);b.classList.toggle('text-amber-400',l===level)});const d=DIFFICULTY_LEVELS[level];document.getElementById('difficulty-label').textContent=d.label;document.getElementById('difficulty-hint').textContent=d.hint;updateSummary()}
 
   function setEngine(name){currentEngine=name;['auto','brouter','dijkstra'].forEach(e=>{const b=document.getElementById('e-'+e);b.classList.toggle('border-sky-400',e===name);b.classList.toggle('bg-sky-400/10',e===name);b.classList.toggle('text-sky-400',e===name)});engineLabelEl.textContent=name==='auto'?'Auto':name==='brouter'?'BRouter':'Dijkstra';document.getElementById('engine-hint').textContent=ENGINE_HINTS[name];updateSummary()}
 
-  function syncTypeButton(type,active){const b=document.getElementById('tog-'+type);b.classList.toggle('border-amber-400',active);b.classList.toggle('bg-amber-400/10',active);b.classList.toggle('text-amber-400',active)}
-  function toggleType(type){const input=document.getElementById('t-'+type);input.checked=!input.checked;syncTypeButton(type,input.checked);updateCosts()}
-
-  function setShape(name){currentShape=name;['incremental','scatter','circle'].forEach(s=>{const b=document.getElementById('s-'+s);if(!b)return;b.classList.toggle('border-amber-400',s===name);b.classList.toggle('bg-amber-400/10',s===name);b.classList.toggle('text-amber-400',s===name)});const h=document.getElementById('shape-hint');if(h)h.textContent=SHAPE_HINTS[name]||'';updateSummary()}
-
-  function updateEnduroTuning(){const trailPct=parseInt(trailEl.value,10),singlePct=parseInt(singleEl.value,10),techLevel=parseInt(techEl.value,10),score=Math.round(trailPct*.45+singlePct*.35+((techLevel-1)/4)*100*.20);techOut.textContent=techLevel;singleOut.textContent=singlePct;techHintEl.textContent=`Niveau ${techLevel}/5 : ${technicalityLabel(techLevel)}.`;enduroMeterEl.style.width=score+'%';enduroCaptionEl.textContent=`${score}% ready`}
-
-  function updateCosts(){const base=DIJKSTRA_PROFILE_COSTS[currentProfile]||DIJKSTRA_PROFILE_COSTS.enduro,types=activeTypes();document.getElementById('c-track').textContent=types.includes('track')?`\u00d7${base.track}`:'\u2014';document.getElementById('c-path').textContent=types.includes('path')?`\u00d7${base.path}`:'\u2014';document.getElementById('c-unc').textContent=types.includes('unclassified')?`\u00d7${base.unclassified}`:'\u2014';document.getElementById('c-ter').textContent=types.includes('tertiary')?`\u00d7${base.tertiary}`:'\u2014';document.getElementById('c-sec').textContent=types.includes('secondary')?`\u00d7${base.secondary}`:'\u2014';TYPES.forEach(t=>document.getElementById('row-'+t).classList.toggle('opacity-40',!types.includes(t)));updateSummary()}
-
-  function updateSummary(){const types=activeTypes(),eng=currentEngine==='auto'?'Auto':currentEngine==='brouter'?'BR':'DJ',items=[`${distEl.value} km`,`${trailEl.value}% off`,`Tech ${techEl.value}/5`,SHAPE_LABELS_UI[currentShape]||currentShape,`${nwpEl.value} WP`,eng];document.getElementById('summary').innerHTML=items.map(i=>`<span class="rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-200">${i}</span>`).join('')}
+  function updateSummary(){const d=DIFFICULTY_LEVELS[currentDifficulty],eng=currentEngine==='auto'?'Auto':currentEngine==='brouter'?'BR':'DJ',items=[`${distEl.value} km`,`Niv.${currentDifficulty}`,d.label,eng];document.getElementById('summary').innerHTML=items.map(i=>`<span class="rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-200">${i}</span>`).join('')}
 
   function setStatus(message,state=''){const el=document.getElementById('status');el.textContent=message;el.className=state==='err'?'mt-1 text-sm font-semibold text-red-400':state==='ok'?'mt-1 text-sm font-semibold text-emerald-400':'mt-1 text-sm font-semibold text-slate-100'}
   function clearLog(){document.getElementById('log').textContent=''}
@@ -311,58 +254,156 @@
   function setMapMode(mode){mapMode=mode;['pan','waypoint'].forEach(m=>{const b=document.getElementById('mapmode-'+m);b.classList.toggle('border-amber-400',m===mode);b.classList.toggle('bg-amber-400/10',m===mode);b.classList.toggle('text-amber-400',m===mode)});if(mode==='pan'){previewState.map.dragging.enable();previewState.map.getContainer().style.cursor=''}else{previewState.map.getContainer().style.cursor='crosshair'}}
 
   /* ══════════════════════════════════════════════════
-     5. OVERPASS OFF-ROAD CANDIDATE DISCOVERY
+     5. TRAIL NETWORK FETCHING (Overpass)
+        Fetches full way geometry + tags for the area
      ══════════════════════════════════════════════════ */
 
-  async function fetchOffroadNodes(lat,lon,radiusM,signal){
-    const query=`[out:json][timeout:45];(way["highway"="track"](around:${radiusM},${lat},${lon});way["highway"="path"](around:${radiusM},${lat},${lon});way["highway"="unclassified"](around:${radiusM},${lat},${lon}););node(w)(around:${radiusM},${lat},${lon});out;`;
+  async function fetchTrailNetwork(lat,lon,radiusM,signal){
+    // Only fetch trail types (no roads - BRouter handles road connections)
+    const trailTypes=DIFFICULTY_LEVELS[currentDifficulty].types;
+    const trailFilters=trailTypes.map(t=>`way["highway"="${t}"](around:${radiusM},${lat},${lon});`).join('');
+    const query=`[out:json][timeout:90];(${trailFilters});out geom tags;`;
     for(const server of OVERPASS_SERVERS){
       try{
+        appendLog(`[Reseau] Requete ${server.split('/')[2]} r=${(radiusM/1000).toFixed(0)}km...`);
         const resp=await fetch(server,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:new URLSearchParams({data:query}),signal});
-        if(!resp.ok)continue;
+        if(!resp.ok){appendLog(`[Reseau] HTTP ${resp.status}`);continue}
         const data=await resp.json();
-        return(data.elements||[]).filter(e=>e.type==='node').map(e=>({lat:e.lat,lon:e.lon}));
-      }catch(e){if(e.name==='AbortError')throw e}
+        const ways=(data.elements||[]).filter(e=>e.type==='way'&&e.geometry?.length>=2);
+        appendLog(`[Reseau] ${ways.length} pistes/chemins charges`);
+        return ways;
+      }catch(e){if(e.name==='AbortError')throw e;appendLog(`[Reseau] Echec: ${e.message}`)}
     }
     return[];
   }
 
   /* ══════════════════════════════════════════════════
-     5b. WAYPOINT GENERATORS
+     5b. TRAIL GRAPH CONSTRUCTION
+         Builds a graph of trail segments with junctions,
+         dead-end detection, and highway type tracking
      ══════════════════════════════════════════════════ */
 
-  // Legacy circle
-  function circleWaypoints(lat,lon,km,n){const d=1.45,per=2*n*Math.sin(Math.PI/n),rKm=km/(per*d),rLat=rKm/111,rLon=rKm/(111*Math.cos(lat*Math.PI/180)),pts=[];for(let i=0;i<n;i++){const a=2*Math.PI*i/n-Math.PI/2;pts.push({lat:+(lat+rLat*Math.sin(a)).toFixed(5),lon:+(lon+rLon*Math.cos(a)).toFixed(5),name:`WP${i+1}`})}return pts}
+  function buildTrailGraph(ways){
+    // Use a spatial grid to snap nearby coordinates together (within ~10m)
+    const SNAP=0.0001; // ~11m
+    function snapKey(lat,lon){return`${(Math.round(lat/SNAP)*SNAP).toFixed(5)},${(Math.round(lon/SNAP)*SNAP).toFixed(5)}`}
 
-  // Scatter: pick from off-road candidates, sort by angle for loop order
-  async function scatterWaypoints(lat,lon,km,n,signal){
-    const radiusKm=km/(2*Math.PI*1.3),radiusM=Math.min(radiusKm*1000,50000);
-    appendLog(`[Scatter] Recherche off-road r=${Math.round(radiusM)}m...`);
-    const candidates=await fetchOffroadNodes(lat,lon,radiusM,signal);
-    appendLog(`[Scatter] ${candidates.length} noeuds off-road trouves`);
-    if(candidates.length<n){appendLog('[Scatter] Trop peu -> fallback cercle');return circleWaypoints(lat,lon,km,n)}
-    // Filter: min distance from start (20% of radius), max distance (100%)
-    const minD=radiusM*0.20,maxD=radiusM*1.0;
-    const filtered=candidates.filter(c=>{const d=haversine(lat,lon,c.lat,c.lon);return d>=minD&&d<=maxD});
-    if(filtered.length<n*3){appendLog('[Scatter] Filtrage insuffisant -> fallback cercle');return circleWaypoints(lat,lon,km,n)}
-    // Random sample with minimum separation
-    const picked=[],minSep=radiusM/(n*1.2);
-    const shuffled=[...filtered].sort(()=>Math.random()-.5);
-    for(const c of shuffled){if(picked.length>=n*3)break;if(picked.every(p=>haversine(p.lat,p.lon,c.lat,c.lon)>=minSep))picked.push(c)}
-    if(picked.length<n){appendLog('[Scatter] Separation insuffisante -> fallback cercle');return circleWaypoints(lat,lon,km,n)}
-    // Sort by angle for loop order then pick n evenly spaced
-    picked.sort((a,b)=>Math.atan2(a.lat-lat,a.lon-lon)-Math.atan2(b.lat-lat,b.lon-lon));
-    const step=picked.length/n,result=[];
-    for(let i=0;i<n;i++){const idx=Math.floor(i*step)%picked.length;result.push({...picked[idx],name:`WP${i+1}`})}
-    appendLog(`[Scatter] ${result.length} waypoints selectionnes`);
-    return result;
+    const nodes=new Map(),edges=new Map();
+    const nodeCount=new Map();
+    const ensure=k=>{if(!edges.has(k))edges.set(k,[])};
+
+    // First pass: register all nodes and count usage per way
+    for(const way of ways){
+      if(!way.geometry||way.geometry.length<2)continue;
+      const keys=new Set();
+      for(const p of way.geometry){
+        const k=snapKey(Number(p.lat),Number(p.lon));
+        if(!nodes.has(k))nodes.set(k,{lat:Number(p.lat),lon:Number(p.lon)});
+        keys.add(k);
+      }
+      // Each unique snapped key touched by this way
+      for(const k of keys)nodeCount.set(k,(nodeCount.get(k)||0)+1);
+    }
+
+    // Second pass: split ways at junctions into segments
+    for(const way of ways){
+      if(!way.geometry||way.geometry.length<2)continue;
+      const hw=way.tags?.highway||'track';
+      const pts=way.geometry.map(p=>({lat:Number(p.lat),lon:Number(p.lon)}));
+      const keys=pts.map(p=>snapKey(p.lat,p.lon));
+
+      // Find junction indices: endpoints + nodes shared by multiple ways
+      const junctions=[0];
+      for(let i=1;i<keys.length-1;i++){
+        if((nodeCount.get(keys[i])||0)>1)junctions.push(i);
+      }
+      junctions.push(keys.length-1);
+
+      for(let j=0;j<junctions.length-1;j++){
+        const iA=junctions[j],iB=junctions[j+1];
+        if(iA===iB)continue;
+        const segPts=pts.slice(iA,iB+1);
+        const dist=polylineLength(segPts);
+        if(dist<5)continue;
+        const kA=keys[iA],kB=keys[iB];
+        if(kA===kB)continue; // loop to self after snap
+        ensure(kA);ensure(kB);
+        edges.get(kA).push({to:kB,dist,hw,wayId:way.id,points:segPts});
+        edges.get(kB).push({to:kA,dist,hw,wayId:way.id,points:[...segPts].reverse()});
+      }
+    }
+
+    // Also connect trail endpoints that are very close but didn't snap
+    // (different ways ending within 50m of each other)
+    const HEAL_DIST=50;
+    const gs=0.0005;
+    const grid=new Map();
+    for(const[k]of edges){
+      const n=nodes.get(k);if(!n)continue;
+      const gk=`${Math.floor(n.lat/gs)},${Math.floor(n.lon/gs)}`;
+      if(!grid.has(gk))grid.set(gk,[]);
+      grid.get(gk).push(k);
+    }
+    let healed=0;
+    for(const[k]of edges){
+      const n=nodes.get(k);if(!n)continue;
+      const gl=Math.floor(n.lat/gs),gn=Math.floor(n.lon/gs);
+      for(let dl=-1;dl<=1;dl++)for(let dn=-1;dn<=1;dn++){
+        for(const nk of(grid.get(`${gl+dl},${gn+dn}`)||[])){
+          if(nk===k)continue;
+          if(edges.get(k).some(e=>e.to===nk))continue; // already connected
+          const nn=nodes.get(nk);
+          const d=haversine(n.lat,n.lon,nn.lat,nn.lon);
+          if(d<=HEAL_DIST){
+            edges.get(k).push({to:nk,dist:d,hw:'track',wayId:-1,points:[n,nn]});
+            edges.get(nk).push({to:k,dist:d,hw:'track',wayId:-1,points:[nn,n]});
+            healed++;
+          }
+        }
+      }
+    }
+
+    // Dead-ends: nodes with exactly 1 unique neighbor
+    const deadEnds=new Set();
+    for(const[k,edgeList]of edges){
+      const neighbors=new Set(edgeList.map(e=>e.to));
+      if(neighbors.size<=1)deadEnds.add(k);
+    }
+
+    const segCount=Math.floor([...edges.values()].reduce((s,e)=>s+e.length,0)/2);
+    appendLog(`[Graphe] ${edges.size} jonctions, ${segCount} segments, ${deadEnds.size} culs-de-sac, ${healed} connexions`);
+    return{nodes,edges,deadEnds};
+  }
+
+  function measureDeadEndTrail(startKey,edges){
+    let totalDist=0,curKey=startKey;
+    const visited=new Set([startKey]);
+    while(true){
+      const neighbors=(edges.get(curKey)||[]).filter(e=>!visited.has(e.to));
+      if(neighbors.length!==1)break;
+      totalDist+=neighbors[0].dist;
+      visited.add(neighbors[0].to);
+      curKey=neighbors[0].to;
+    }
+    return totalDist;
+  }
+
+  // Find nearest graph junction node (must have edges)
+  function findNearestTrailNode(lat,lon,graphNodes,graphEdges){
+    let bestKey=null,bestDist=Infinity;
+    for(const[k]of graphEdges){
+      const n=graphNodes.get(k);if(!n)continue;
+      const d=haversine(lat,lon,n.lat,n.lon);
+      if(d<bestDist){bestDist=d;bestKey=k}
+    }
+    return bestKey?{key:bestKey,dist:bestDist}:null;
   }
 
   /* ══════════════════════════════════════════════════
      6. BROUTER ENGINE
      ══════════════════════════════════════════════════ */
 
-  function brouterProfileName(){return PROFILES[currentProfile]?.brouter||'trekking'}
+  function brouterProfileName(){return'trekking'}
 
   async function brouterSegment(from,to,signal){
     const url=`${BROUTER_SERVER}?lonlats=${from.lon},${from.lat}|${to.lon},${to.lat}&profile=${brouterProfileName()}&alternativeidx=0&format=geojson`;
@@ -375,7 +416,6 @@
   }
 
   async function routeSegment(from,to,signal){
-    // Single segment routing with auto fallback
     const engine=currentEngine;
     if(engine==='dijkstra')return await dijkstraSegment(from,to,signal);
     if(engine==='brouter')return await brouterSegment(from,to,signal);
@@ -386,12 +426,10 @@
     }
   }
 
-  // Dijkstra single segment (lightweight: fetches only needed area)
   async function dijkstraSegment(from,to,signal){
     const types=activeTypes();if(!types.length)throw new Error('Aucun type de voie');
-    const baseCosts=DIJKSTRA_PROFILE_COSTS[currentProfile]||DIJKSTRA_PROFILE_COSTS.enduro;
-    const costMap={};for(const t of TYPES)costMap[t]=types.includes(t)?(baseCosts[t]??5.0):Infinity;
-    const prefs={trailPct:parseInt(trailEl.value,10),singletrackPct:parseInt(singleEl.value,10),techLevel:parseInt(techEl.value,10)};
+    const costMap={};for(const t of TYPES)costMap[t]=types.includes(t)?(DIJKSTRA_COSTS[t]??5.0):Infinity;
+    const prefs=getRoutingPrefs();
     const bboxes=buildBboxes([from,to]);
     const elements=await fetchAllTiles(bboxes,types,signal);
     if(!elements.length)throw new Error('Aucun chemin OSM');
@@ -400,7 +438,7 @@
     const sFrom=nearestNode(from.lat,from.lon,coords),sTo=nearestNode(to.lat,to.lon,coords);
     const r=aStarRoute(sFrom.node,sTo.node,adj,coords);
     if(!r)return{points:fallbackSegment(from,to),distance:haversine(from.lat,from.lon,to.lat,to.lon)};
-    const pts=r.nodes.map(k=>coords.get(k)).filter(Boolean);
+    const pts=reconstructPath(r.nodes).map(k=>coords.get(k)).filter(Boolean);
     return{points:pts,distance:r.length,stats:r.stats};
   }
 
@@ -444,9 +482,8 @@
   // Full Dijkstra pipeline for manual waypoints
   async function computeRouteDijkstra(allWaypoints,signal){
     const types=activeTypes();if(!types.length)throw new Error('Selectionne au moins un type de voie');
-    const baseCosts=DIJKSTRA_PROFILE_COSTS[currentProfile]||DIJKSTRA_PROFILE_COSTS.enduro;
-    const costMap={};for(const t of TYPES)costMap[t]=types.includes(t)?(baseCosts[t]??5.0):Infinity;
-    const prefs={trailPct:parseInt(trailEl.value,10),singletrackPct:parseInt(singleEl.value,10),techLevel:parseInt(techEl.value,10)};
+    const costMap={};for(const t of TYPES)costMap[t]=types.includes(t)?(DIJKSTRA_COSTS[t]??5.0):Infinity;
+    const prefs=getRoutingPrefs();
     appendLog('[Dijkstra] Chargement zone...');
     const bboxes=buildBboxes(allWaypoints);
     const elements=await fetchAllTiles(bboxes,types,signal);
@@ -469,123 +506,232 @@
   }
 
   /* ══════════════════════════════════════════════════
-     8. INCREMENTAL ROUTE GENERATION
-        Core innovation: builds route step-by-step,
-        picks each next waypoint to maximize off-road
-        and avoid already-visited areas
+     8. TRAIL NETWORK NAVIGATION
+        Core algorithm: navigates the OSM trail graph
+        segment-by-segment, choosing longest non-dead-end
+        branches, max 3km road between trails,
+        anti-repeat except within 1km of start (return only)
      ══════════════════════════════════════════════════ */
 
-  async function generateIncrementalRoute(startLat,startLon,targetKm,nWaypoints,signal){
-    const visited=new Set();
-    let curLat=startLat,curLon=startLon;
-    const allPoints=[],allWaypoints=[{name:'DEPART',lat:startLat,lon:startLon}];
-    let totalDist=0,segBudgetKm=targetKm/nWaypoints;
-    const radiusKm=targetKm/(2*Math.PI*1.3);
+  async function generateTrailRoute(startLat,startLon,targetKm,signal){
+    const targetM=targetKm*1000;
+    const tolerance=targetKm<=50?5000:targetM*0.10;
+    const halfTarget=targetM/2;
 
-    // Pre-fetch off-road candidates for the whole area
-    appendLog('[Incremental] Recherche zones off-road...');
-    const candidates=await fetchOffroadNodes(startLat,startLon,Math.min(radiusKm*1000,50000),signal);
-    appendLog(`[Incremental] ${candidates.length} noeuds off-road disponibles`);
+    // 1. Fetch trail network (trails only, adapted radius)
+    const radiusM=Math.min(Math.max(targetKm*300,5000),50000);
+    const ways=await fetchTrailNetwork(startLat,startLon,radiusM,signal);
+    if(!ways.length)throw new Error('Aucune piste/chemin dans la zone');
 
-    if(candidates.length<nWaypoints*2){
-      appendLog('[Incremental] Pas assez de noeuds -> fallback scatter');
-      return null; // caller will fallback
+    // 2. Build trail graph
+    const{nodes:gNodes,edges:gEdges,deadEnds}=buildTrailGraph(ways);
+    if(!gEdges.size)throw new Error('Graphe de pistes vide');
+
+    // 3. Snap start to nearest trail junction
+    const startSnap=findNearestTrailNode(startLat,startLon,gNodes,gEdges);
+    if(!startSnap||startSnap.dist>5000)throw new Error('Aucune piste a moins de 5km du depart');
+    const startKey=startSnap.key;
+    appendLog(`[Trail] Depart accroche a ${startSnap.dist.toFixed(0)}m`);
+
+    // 4. If start is far from trail, route to it first via BRouter
+    const startNode=gNodes.get(startKey);
+    const allPoints=[];
+    let totalDist=0;
+    if(startSnap.dist>100){
+      try{
+        const seg=await routeSegment({lat:startLat,lon:startLon},{lat:startNode.lat,lon:startNode.lon},signal);
+        seg.points.forEach(p=>allPoints.push(p));
+        totalDist+=seg.distance||0;
+        appendLog(`  Route vers piste: ${(seg.distance/1000).toFixed(1)}km`);
+      }catch(e){if(e.name==='AbortError')throw e}
     }
 
-    for(let step=1;step<=nWaypoints;step++){
-      if(signal?.aborted)throw new DOMException('Annule','AbortError');
-      const remainingKm=targetKm-totalDist;
-      const remainingSteps=nWaypoints-step+1;
-      segBudgetKm=remainingKm/remainingSteps;
-      const progress=step/nWaypoints;
+    const allWaypoints=[{name:'DEPART',lat:startLat,lon:startLon}];
+    const usedEdges=new Set();
+    let curKey=startKey,wpCount=0,phase='outbound';
 
-      // Target distance for this segment
-      const targetSegM=segBudgetKm*1000;
-      const minSegM=targetSegM*0.4,maxSegM=targetSegM*1.6;
+    function edgeUid(e,fromKey){return`${e.wayId}:${fromKey}:${e.to}`}
+    function isUsed(e,fromKey){return usedEdges.has(edgeUid(e,fromKey))||usedEdges.has(edgeUid({wayId:e.wayId,to:fromKey},e.to))}
+    function markUsed(e,fromKey){usedEdges.add(edgeUid(e,fromKey));usedEdges.add(edgeUid({wayId:e.wayId,to:fromKey},e.to))}
+    function inStartZone(nodeKey){const n=gNodes.get(nodeKey);return n?haversine(startLat,startLon,n.lat,n.lon)<=START_ZONE_RADIUS:false}
 
-      // Direction bias: explore outward early, return home late
-      const angleToStart=Math.atan2(startLat-curLat,startLon-curLon);
-      const returnBias=Math.max(0,(progress-0.55)/0.45); // 0 until 55%, then ramp to 1
+    // Score an edge
+    function scoreEdge(e,fromKey){
+      const toNode=gNodes.get(e.to);
+      if(!toNode)return-Infinity;
+      const distToStart=haversine(startLat,startLon,toNode.lat,toNode.lon);
+      const used=isUsed(e,fromKey);
 
-      // Score candidates
-      const scored=candidates.map(c=>{
-        const dist=haversine(curLat,curLon,c.lat,c.lon);
-        if(dist<minSegM||dist>maxSegM)return null;
-        const distToStart=haversine(startLat,startLon,c.lat,c.lon);
-        if(distToStart>radiusKm*1200)return null; // don't go too far from start
-
-        // Anti-revisit: penalize areas already traversed
-        const revisitCount=countVisitedCells(c.lat,c.lon,visited,3);
-        const revisitPenalty=revisitCount*0.15;
-
-        // Direction score: favor unexplored directions
-        const angleToCandidate=Math.atan2(c.lat-curLat,c.lon-curLon);
-        const angleDiffFromStart=Math.abs(angleToCandidate-angleToStart);
-        const explorationBonus=(1-returnBias)*Math.min(angleDiffFromStart,2*Math.PI-angleDiffFromStart)/Math.PI;
-
-        // Return bonus for late steps
-        const returnBonus=returnBias*(1-distToStart/(radiusKm*1000+1));
-
-        // Randomness to keep it unpredictable
-        const randomBonus=Math.random()*0.3;
-
-        const score=explorationBonus+returnBonus+randomBonus-revisitPenalty;
-        return{...c,score,dist};
-      }).filter(Boolean).sort((a,b)=>b.score-a.score);
-
-      if(!scored.length){
-        appendLog(`[Step ${step}/${nWaypoints}] Aucun candidat viable, retour au depart`);
-        break;
+      if(used){
+        if(phase==='return'&&inStartZone(fromKey)&&inStartZone(e.to))return 0.5+Math.random()*0.3;
+        return-Infinity;
       }
 
-      // Try top candidates until one routes successfully
-      let routed=false;
-      for(let ci=0;ci<Math.min(scored.length,5);ci++){
-        const next=scored[ci];
-        const wp={name:`WP${step}`,lat:+next.lat.toFixed(5),lon:+next.lon.toFixed(5)};
-        const from={lat:curLat,lon:curLon,name:allWaypoints[allWaypoints.length-1].name};
-        appendLog(`[Step ${step}/${nWaypoints}] ${from.name} \u2192 ${wp.name} (score ${next.score.toFixed(2)})`);
-        setStatus(`Segment ${step}/${nWaypoints} \u00b7 ${(totalDist/1000).toFixed(0)} km cumules`);
+      // Dead-end: skip if too short or would blow budget
+      if(deadEnds.has(e.to)){
+        const deLen=measureDeadEndTrail(e.to,gEdges)+e.dist;
+        if(deLen<MIN_DEADEND_LENGTH)return-Infinity;
+        const budget=phase==='outbound'?halfTarget-totalDist:targetM-totalDist;
+        if(deLen*2>budget*0.7)return-Infinity;
+      }
 
+      let score=3.0; // all edges are trails (graph has only trails)
+      score+=Math.min(e.dist/2000,1.5);
+
+      if(phase==='outbound'){
+        score+=Math.min(distToStart/3000,2.0);
+      }else{
+        const curNode=gNodes.get(fromKey);
+        const curDist=curNode?haversine(startLat,startLon,curNode.lat,curNode.lon):0;
+        score+=distToStart<curDist?2.0:-0.5;
+      }
+      score+=Math.random()*0.8;
+      return score;
+    }
+
+    // Bridge: find nearest unvisited trail within 3km via BRouter
+    async function bridgeToTrail(fromKey,signal){
+      const fromNode=gNodes.get(fromKey);
+      if(!fromNode)return null;
+
+      // Find all junction nodes with unused trail edges, within 3km
+      const candidates=[];
+      for(const[k,edgeList]of gEdges){
+        if(k===fromKey)continue;
+        const n=gNodes.get(k);if(!n)continue;
+        const d=haversine(fromNode.lat,fromNode.lon,n.lat,n.lon);
+        if(d>MAX_ROAD_BETWEEN_TRAILS)continue;
+        const hasUnused=edgeList.some(e=>!isUsed(e,k));
+        if(hasUnused)candidates.push({key:k,node:n,dist:d});
+      }
+      if(!candidates.length)return null;
+
+      // Sort by distance, try closest first
+      candidates.sort((a,b)=>a.dist-b.dist);
+      for(const cand of candidates.slice(0,3)){
         try{
-          const seg=await routeSegment(from,wp,signal);
-          const pts=allPoints.length===0?seg.points:seg.points.slice(1);
-          pts.forEach(p=>allPoints.push(p));
-          markCells(pts,visited);
-          totalDist+=seg.distance||0;
-          curLat=wp.lat;curLon=wp.lon;
-          allWaypoints.push(wp);
-          appendLog(`  OK ${(seg.distance/1000).toFixed(1)} km (total ${(totalDist/1000).toFixed(1)} km)`);
-          routed=true;
-          await delay(800,signal); // rate limit
+          const seg=await routeSegment(fromNode,cand.node,signal);
+          if(seg.distance>MAX_ROAD_BETWEEN_TRAILS*1.5)continue; // routed distance too long
+          appendLog(`  Pont route -> piste: ${(seg.distance/1000).toFixed(1)}km`);
+          return{key:cand.key,points:seg.points,distance:seg.distance};
+        }catch(e){if(e.name==='AbortError')throw e}
+      }
+      return null;
+    }
+
+    // 5. Main navigation loop
+    appendLog('[Trail] Navigation...');
+    let stuckCount=0;
+
+    while(totalDist<targetM+tolerance){
+      if(signal?.aborted)throw new DOMException('Annule','AbortError');
+
+      if(phase==='outbound'&&totalDist>=halfTarget){
+        phase='return';
+        appendLog(`[Trail] Phase retour a ${(totalDist/1000).toFixed(1)}km`);
+      }
+
+      // Stop condition: near target distance AND near start
+      if(phase==='return'&&totalDist>=targetM-tolerance){
+        const cn=gNodes.get(curKey);
+        if(cn&&haversine(startLat,startLon,cn.lat,cn.lon)<2000){
+          appendLog(`[Trail] Distance cible: ${(totalDist/1000).toFixed(1)}km`);
           break;
-        }catch(e){
-          if(e.name==='AbortError')throw e;
-          appendLog(`  Echec routage: ${e.message}`);
         }
       }
-      if(!routed){appendLog(`[Step ${step}] Tous candidats echec, arret`);break}
+      if(totalDist>targetM+tolerance*2){appendLog('[Trail] Depassement max');break}
 
-      // Early exit if we've exceeded target distance
-      if(totalDist>targetKm*1100){appendLog('[Incremental] Distance cible atteinte');break}
+      // Available trail edges
+      const available=(gEdges.get(curKey)||[])
+        .map(e=>({...e,score:scoreEdge(e,curKey)}))
+        .filter(e=>e.score>-Infinity)
+        .sort((a,b)=>b.score-a.score);
+
+      if(available.length){
+        // Follow best trail edge
+        const chosen=available[0];
+        const pts=allPoints.length?chosen.points.slice(1):chosen.points;
+        pts.forEach(p=>allPoints.push(p));
+        markUsed(chosen,curKey);
+        totalDist+=chosen.dist;
+        curKey=chosen.to;
+        stuckCount=0;
+
+        // Periodic waypoints
+        const wpInterval=targetM/12;
+        if(totalDist>=(wpCount+1)*wpInterval){
+          wpCount++;
+          const n=gNodes.get(curKey);
+          if(n)allWaypoints.push({name:`WP${wpCount}`,lat:n.lat,lon:n.lon});
+        }
+      }else{
+        // Dead end or all edges used: bridge via road to next trail
+        appendLog(`  Impasse a ${(totalDist/1000).toFixed(1)}km...`);
+        const bridge=await bridgeToTrail(curKey,signal);
+        if(bridge){
+          const pts=allPoints.length?bridge.points.slice(1):bridge.points;
+          pts.forEach(p=>allPoints.push(p));
+          totalDist+=bridge.distance;
+          curKey=bridge.key;
+          stuckCount=0;
+          continue;
+        }
+
+        stuckCount++;
+        if(stuckCount>=3){appendLog('[Trail] Bloque, fin navigation');break}
+
+        // Last resort: backtrack toward start on any edge
+        const curNode=gNodes.get(curKey);
+        const bt=(gEdges.get(curKey)||[]).find(e=>{
+          const n=gNodes.get(e.to);
+          return n&&curNode&&haversine(startLat,startLon,n.lat,n.lon)<haversine(startLat,startLon,curNode.lat,curNode.lon);
+        });
+        if(bt){
+          appendLog('  Backtrack...');
+          bt.points.slice(1).forEach(p=>allPoints.push(p));
+          totalDist+=bt.dist;
+          curKey=bt.to;
+        }else{appendLog('[Trail] Aucune sortie');break}
+      }
+
+      setStatus(`${phase==='outbound'?'Aller':'Retour'} \u00b7 ${(totalDist/1000).toFixed(1)} / ${targetKm} km`);
     }
 
-    // Return to start
-    appendLog('[Incremental] Retour au depart...');
-    const returnWp={name:'ARRIVEE',lat:startLat,lon:startLon};
-    try{
-      const seg=await routeSegment({lat:curLat,lon:curLon,name:allWaypoints[allWaypoints.length-1].name},returnWp,signal);
-      seg.points.slice(1).forEach(p=>allPoints.push(p));
-      totalDist+=seg.distance||0;
-      appendLog(`  Retour OK ${(seg.distance/1000).toFixed(1)} km`);
-    }catch(e){
-      if(e.name==='AbortError')throw e;
-      appendLog(`  Retour direct (fallback): ${e.message}`);
-      fallbackSegment({lat:curLat,lon:curLon},returnWp).forEach(p=>allPoints.push(p));
+    // 6. Return to start
+    const lastNode=gNodes.get(curKey);
+    const distHome=lastNode?haversine(startLat,startLon,lastNode.lat,lastNode.lon):Infinity;
+    if(distHome>200){
+      appendLog(`[Trail] Retour au depart (${(distHome/1000).toFixed(1)}km)...`);
+      try{
+        const seg=await routeSegment(lastNode,{lat:startLat,lon:startLon},signal);
+        seg.points.slice(1).forEach(p=>allPoints.push(p));
+        totalDist+=seg.distance||0;
+        appendLog(`  Retour OK ${(seg.distance/1000).toFixed(1)}km`);
+      }catch(e){
+        if(e.name==='AbortError')throw e;
+        appendLog(`  Retour fallback: ${e.message}`);
+        fallbackSegment(lastNode||{lat:startLat,lon:startLon},{lat:startLat,lon:startLon}).forEach(p=>allPoints.push(p));
+      }
     }
-    allWaypoints.push(returnWp);
+    allWaypoints.push({name:'ARRIVEE',lat:startLat,lon:startLon});
 
-    return{allWaypoints,route:{points:allPoints,total:totalDist,stats:null,engine:currentEngine==='dijkstra'?'Dijkstra':currentEngine==='brouter'?'BRouter':'Auto (incr.)'}};
+    // 7. Stats from traversed edges
+    const stats={};
+    for(const eid of usedEdges){
+      const parts=eid.split(':');
+      if(parts[1]>parts[2])continue; // count each edge once
+      const wid=parseInt(parts[0]);
+      if(wid<0)continue; // healing edges
+      const way=ways.find(w=>w.id===wid);
+      if(way){const hw=way.tags?.highway||'track';
+        // Use actual segment geometry for distance
+        const fn=gNodes.get(parts[1]),tn=gNodes.get(parts[2]);
+        if(fn&&tn)stats[hw]=(stats[hw]||0)+haversine(fn.lat,fn.lon,tn.lat,tn.lon);
+      }
+    }
+
+    appendLog(`[Trail] Trace: ${(totalDist/1000).toFixed(1)}km, ${allWaypoints.length} WP`);
+    return{allWaypoints,route:{points:allPoints,total:totalDist,stats,engine:'Trail+'+( currentEngine==='dijkstra'?'Dijkstra':'BRouter')}};
   }
 
   /* ══════════════════════════════════════════════════
@@ -627,7 +773,7 @@
      10. GPX BUILDING & DOWNLOAD
      ══════════════════════════════════════════════════ */
 
-  function buildGpxString(meta,waypoints,points){const name=`Enduro ~${meta.targetKm}km - ${meta.startName}`,desc=`Circuit enduro ${meta.shapeLabel}, technicite ${meta.techLevel}/5. Moteur: ${meta.engine||'?'}. Source OSM.`;let out='<?xml version="1.0" encoding="UTF-8"?>\r\n<gpx version="1.1" creator="Precision Explorer v2.1" xmlns="http://www.topografix.com/GPX/1/1">\r\n';out+=`  <metadata>\r\n    <name>${gpxEscape(name)}</name>\r\n    <desc>${gpxEscape(desc)}</desc>\r\n  </metadata>\r\n`;waypoints.forEach(w=>{out+=`  <wpt lat="${w.lat.toFixed(5)}" lon="${w.lon.toFixed(5)}">\r\n    <name>${gpxEscape(w.name)}</name>\r\n  </wpt>\r\n`});out+=`  <trk>\r\n    <name>${gpxEscape(name)}</name>\r\n    <trkseg>\r\n`;points.forEach(p=>{out+=`      <trkpt lat="${p.lat.toFixed(5)}" lon="${p.lon.toFixed(5)}"></trkpt>\r\n`});out+='    </trkseg>\r\n  </trk>\r\n</gpx>\r\n';return out}
+  function buildGpxString(meta,waypoints,points){const name=`Enduro ~${meta.targetKm}km - ${meta.startName}`,desc=`Circuit enduro niv.${currentDifficulty}, ${DIFFICULTY_LEVELS[currentDifficulty].label}. Moteur: ${meta.engine||'?'}. Source OSM.`;let out='<?xml version="1.0" encoding="UTF-8"?>\r\n<gpx version="1.1" creator="Precision Explorer v2.2" xmlns="http://www.topografix.com/GPX/1/1">\r\n';out+=`  <metadata>\r\n    <name>${gpxEscape(name)}</name>\r\n    <desc>${gpxEscape(desc)}</desc>\r\n  </metadata>\r\n`;waypoints.forEach(w=>{out+=`  <wpt lat="${w.lat.toFixed(5)}" lon="${w.lon.toFixed(5)}">\r\n    <name>${gpxEscape(w.name)}</name>\r\n  </wpt>\r\n`});out+=`  <trk>\r\n    <name>${gpxEscape(name)}</name>\r\n    <trkseg>\r\n`;points.forEach(p=>{out+=`      <trkpt lat="${p.lat.toFixed(5)}" lon="${p.lon.toFixed(5)}"></trkpt>\r\n`});out+='    </trkseg>\r\n  </trk>\r\n</gpx>\r\n';return out}
 
   function downloadText(fn,text,mime='text/plain'){const blob=new Blob([text],{type:mime}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=fn;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url)}
   function downloadGpx(){if(!lastGpxString)return;downloadText('trace_enduro.gpx',lastGpxString,'application/gpx+xml')}
@@ -661,7 +807,7 @@
      ══════════════════════════════════════════════════ */
 
   async function generate(){
-    const trailPct=parseInt(trailEl.value,10),singletrackPct=parseInt(singleEl.value,10),techLevel=parseInt(techEl.value,10),types=activeTypes();
+    const types=activeTypes();
     const manualWaypoints=previewState.manualWaypoints.map((w,i)=>({name:w.name||`PASSAGE ${i+1}`,lat:w.lat,lon:w.lon}));
 
     if(currentMode==='waypoints'&&manualWaypoints.length<2){setStatus('Pose au moins 2 points sur la carte.','err');return}
@@ -678,48 +824,27 @@
       let allWaypoints,route,startName;
 
       if(currentMode==='waypoints'){
-        // Manual waypoints: unchanged
         allWaypoints=manualWaypoints;startName=manualWaypoints[0].name;
         setStatus(`Mode waypoints \u00b7 ${manualWaypoints.length} points`,'ok');
-        appendLog(`[Config] ${allWaypoints.length} waypoints \u00b7 profil ${currentProfile} \u00b7 moteur ${currentEngine}`);
+        appendLog(`[Config] ${allWaypoints.length} waypoints \u00b7 niv.${currentDifficulty} \u00b7 moteur ${currentEngine}`);
         route=await computeRoute(allWaypoints,signal);
       }else{
-        // Boucle mode: depends on strategy
-        const targetKm=parseInt(distEl.value,10),nWp=parseInt(nwpEl.value,10);
+        // Boucle mode: trail network navigation
+        const targetKm=parseInt(distEl.value,10);
         const startLat=manualWaypoints[0].lat,startLon=manualWaypoints[0].lon;
         startName=manualWaypoints[0].name||'Depart';
         setStatus(`Depart : ${startLat.toFixed(4)}, ${startLon.toFixed(4)}`,'ok');
-        appendLog(`[Config] ${targetKm} km \u00b7 ${nWp} WP \u00b7 strategie ${currentShape} \u00b7 profil ${currentProfile} \u00b7 moteur ${currentEngine}`);
+        appendLog(`[Config] ${targetKm} km \u00b7 niv.${currentDifficulty} (${DIFFICULTY_LEVELS[currentDifficulty].label}) \u00b7 moteur ${currentEngine}`);
 
-        if(currentShape==='incremental'){
-          // Incremental: step-by-step with anti-revisit
-          const result=await generateIncrementalRoute(startLat,startLon,targetKm,nWp,signal);
-          if(result){allWaypoints=result.allWaypoints;route=result.route}
-          else{
-            // Fallback to scatter
-            appendLog('[Fallback] Scatter...');
-            const midWp=await scatterWaypoints(startLat,startLon,targetKm,nWp,signal);
-            allWaypoints=[{name:`DEPART - ${startName}`,lat:startLat,lon:startLon},...midWp,{name:`ARRIVEE - ${startName}`,lat:startLat,lon:startLon}];
-            route=await computeRoute(allWaypoints,signal);
-          }
-        }else if(currentShape==='scatter'){
-          // Scatter: random off-road waypoints
-          const midWp=await scatterWaypoints(startLat,startLon,targetKm,nWp,signal);
-          allWaypoints=[{name:`DEPART - ${startName}`,lat:startLat,lon:startLon},...midWp,{name:`ARRIVEE - ${startName}`,lat:startLat,lon:startLon}];
-          appendLog(`[Route] ${allWaypoints.length} waypoints -> routage...`);
-          route=await computeRoute(allWaypoints,signal);
-        }else{
-          // Legacy circle
-          const midWp=manualWaypoints.length>1?manualWaypoints.slice(1):circleWaypoints(startLat,startLon,targetKm,nWp);
-          allWaypoints=[{name:`DEPART - ${startName}`,lat:startLat,lon:startLon},...midWp,{name:`ARRIVEE - ${startName}`,lat:startLat,lon:startLon}];
-          route=await computeRoute(allWaypoints,signal);
-        }
+        const result=await generateTrailRoute(startLat,startLon,targetKm,signal);
+        allWaypoints=result.allWaypoints;
+        route=result.route;
       }
 
       if(!route||!route.points.length)throw new Error('Trace vide.');
 
       lastEngineUsed=route.engine||'?';
-      const meta={startName,targetKm:Math.round(route.total/1000),shapeLabel:SHAPE_LABELS_DESC[currentShape]||currentShape,trailPct,singletrackPct,techLevel,typesLabel:types.map(t=>TYPE_LABELS[t]).join(', '),engine:lastEngineUsed};
+      const meta={startName,targetKm:Math.round(route.total/1000),engine:lastEngineUsed};
       await renderPreview(meta,allWaypoints,route.points,route);
 
       const offDist=Object.entries(route.stats||{}).reduce((s,[hw,v])=>s+(OFFROAD_TYPES.has(hw)?v:0),0);
@@ -742,15 +867,13 @@
      13. INITIALIZATION
      ══════════════════════════════════════════════════ */
 
-  updateEnduroTuning();
-  setShape('incremental');
-  setProfile('enduro');
+  setDifficulty(2);
   setEngine('auto');
   setMode('boucle');
   setMapMode('pan');
-  updateCosts();
+  updateSummary();
   setStatus('Pret.');
-  document.getElementById('log').textContent='Journal de generation (Incremental / BRouter / Dijkstra)';
+  document.getElementById('log').textContent='Journal de generation (Trail Network / BRouter / Dijkstra)';
 
   </script>
 </body>
