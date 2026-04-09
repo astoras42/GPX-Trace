@@ -188,7 +188,7 @@
 
   // Trail navigation constants
   const MAX_ROAD_BETWEEN_TRAILS=3000; // 3km max de route entre 2 pistes
-  const MIN_DEADEND_LENGTH=2000;      // 2km min pour accepter un cul-de-sac (4km A/R)
+  const MIN_DEADEND_LENGTH=3000;      // 3km min pour accepter un cul-de-sac (6km A/R)
   const START_ZONE_RADIUS=1000;       // 1km rayon zone depart (reutilisation retour)
 
   // Dijkstra costs (for manual waypoints fallback)
@@ -260,7 +260,7 @@
 
   const CACHE_DB_NAME='gpx-trail-cache';
   const CACHE_STORE='overpass';
-  const CACHE_VERSION=1;
+  const CACHE_VERSION=2; // bump to invalidate old cache
   const CACHE_TTL=7*24*3600*1000; // 7 jours
 
   function openCacheDB(){
@@ -418,10 +418,11 @@
       }
     }
 
-    // Also connect trail endpoints that are very close but didn't snap
-    // (different ways ending within 50m of each other)
-    const HEAL_DIST=100; // connect trail endpoints within 100m
-    const gs=0.0005;
+    // Heal: connect nearby trail endpoints to reduce fragmentation
+    // Short distance (30m) avoids zigzag between parallel trails
+    // Dead-ends get a larger radius (80m) since they need connectivity most
+    const HEAL_DIST=30,HEAL_DIST_DEADEND=80;
+    const gs=0.001;
     const grid=new Map();
     for(const[k]of edges){
       const n=nodes.get(k);if(!n)continue;
@@ -429,26 +430,36 @@
       if(!grid.has(gk))grid.set(gk,[]);
       grid.get(gk).push(k);
     }
+    // Find dead-end nodes (degree 1) BEFORE healing
+    const preDeadEnds=new Set();
+    for(const[k,edgeList]of edges){
+      const neighbors=new Set(edgeList.map(e=>e.to));
+      if(neighbors.size<=1)preDeadEnds.add(k);
+    }
     let healed=0;
     for(const[k]of edges){
       const n=nodes.get(k);if(!n)continue;
+      const maxD=preDeadEnds.has(k)?HEAL_DIST_DEADEND:HEAL_DIST;
       const gl=Math.floor(n.lat/gs),gn=Math.floor(n.lon/gs);
+      let bestNk=null,bestD=Infinity;
       for(let dl=-1;dl<=1;dl++)for(let dn=-1;dn<=1;dn++){
         for(const nk of(grid.get(`${gl+dl},${gn+dn}`)||[])){
           if(nk===k)continue;
-          if(edges.get(k).some(e=>e.to===nk))continue; // already connected
+          if(edges.get(k).some(e=>e.to===nk))continue;
           const nn=nodes.get(nk);
           const d=haversine(n.lat,n.lon,nn.lat,nn.lon);
-          if(d<=HEAL_DIST){
-            edges.get(k).push({to:nk,dist:d,hw:'track',wayId:-1,points:[n,nn]});
-            edges.get(nk).push({to:k,dist:d,hw:'track',wayId:-1,points:[nn,n]});
-            healed++;
-          }
+          if(d<=maxD&&d<bestD){bestD=d;bestNk=nk}
         }
+      }
+      if(bestNk){
+        const nn=nodes.get(bestNk);
+        edges.get(k).push({to:bestNk,dist:bestD,hw:'track',wayId:-1,points:[n,nn]});
+        edges.get(bestNk).push({to:k,dist:bestD,hw:'track',wayId:-1,points:[nn,n]});
+        healed++;
       }
     }
 
-    // Dead-ends: nodes with exactly 1 unique neighbor
+    // Dead-ends: nodes with exactly 1 unique neighbor (recompute after healing)
     const deadEnds=new Set();
     for(const[k,edgeList]of edges){
       const neighbors=new Set(edgeList.map(e=>e.to));
@@ -635,12 +646,33 @@
     const usedEdges=new Set();
     const visitedNodes=new Set([startKey]);
     const bridgedTo=new Set();
-    let curKey=startKey,wpCount=0,phase='outbound',trailDist=0,roadDist=0;
+    const recentKeys=[];// last N visited keys for anti-U-turn
+    const RECENT_MAX=3;
+    let curKey=startKey,prevKey=null,wpCount=0,phase='outbound',trailDist=0,roadDist=0,lastWasEscape=false;
 
     function edgeUid(e,fromKey){return`${e.wayId}:${fromKey}:${e.to}`}
     function isUsed(e,fromKey){return usedEdges.has(edgeUid(e,fromKey))||usedEdges.has(edgeUid({wayId:e.wayId,to:fromKey},e.to))}
     function markUsed(e,fromKey){usedEdges.add(edgeUid(e,fromKey));usedEdges.add(edgeUid({wayId:e.wayId,to:fromKey},e.to))}
     function inStartZone(nodeKey){const n=gNodes.get(nodeKey);return n?haversine(startLat,startLon,n.lat,n.lon)<=START_ZONE_RADIUS:false}
+
+    // Check if a node leads to a dead-end chain (degree-2 corridor ending at dead-end)
+    function isDeadEndChain(nodeKey,fromKey){
+      if(deadEnds.has(nodeKey))return measureDeadEndTrail(nodeKey,gEdges);
+      // Walk forward through degree-2 nodes to see if it leads to a dead-end
+      let cur=nodeKey,prev=fromKey,dist=0;
+      const seen=new Set([fromKey,nodeKey]);
+      for(let i=0;i<20;i++){
+        const neighbors=(gEdges.get(cur)||[]).filter(e=>!seen.has(e.to));
+        if(neighbors.length===0)return dist; // dead-end reached
+        if(neighbors.length>1)return-1; // real junction = not a dead-end chain
+        dist+=neighbors[0].dist;
+        seen.add(neighbors[0].to);
+        prev=cur;
+        cur=neighbors[0].to;
+        if(deadEnds.has(cur))return dist+measureDeadEndTrail(cur,gEdges);
+      }
+      return-1; // long chain, treat as normal
+    }
 
     // Score an edge
     function scoreEdge(e,fromKey){
@@ -654,16 +686,20 @@
         return-Infinity;
       }
 
-      // Dead-end: skip if too short or would blow budget
-      if(deadEnds.has(e.to)){
-        const deLen=measureDeadEndTrail(e.to,gEdges)+e.dist;
-        if(deLen<MIN_DEADEND_LENGTH)return-Infinity;
+      // Anti-U-turn: strongly penalize going back to recent nodes
+      if(recentKeys.includes(e.to))return-Infinity;
+
+      // Dead-end chain detection: check if this edge leads into a dead-end corridor
+      const deLen=isDeadEndChain(e.to,fromKey);
+      if(deLen>=0){
+        const totalDeLen=deLen+e.dist;
+        if(totalDeLen<MIN_DEADEND_LENGTH)return-Infinity;
         const budget=phase==='outbound'?halfTarget-totalDist:targetM-totalDist;
-        if(deLen*2>budget*0.7)return-Infinity;
+        if(totalDeLen*2>budget*0.7)return-Infinity;
       }
 
-      let score=3.0; // all edges are trails (graph has only trails)
-      score+=Math.min(e.dist/2000,1.5);
+      let score=3.0;
+      score+=Math.min(e.dist/2000,1.5); // prefer longer segments
 
       if(phase==='outbound'){
         score+=Math.min(distToStart/3000,2.0);
@@ -672,7 +708,7 @@
         const curDist=curNode?haversine(startLat,startLon,curNode.lat,curNode.lon):0;
         score+=distToStart<curDist?2.0:-0.5;
       }
-      score+=Math.random()*0.8;
+      score+=Math.random()*0.5;
       return score;
     }
 
@@ -798,9 +834,12 @@
         pts.forEach(p=>allPoints.push(p));
         markUsed(chosen,curKey);
         totalDist+=chosen.dist;trailDist+=chosen.dist;
+        prevKey=curKey;
         curKey=chosen.to;
         visitedNodes.add(curKey);
-        stuckCount=0;
+        recentKeys.push(curKey);
+        if(recentKeys.length>RECENT_MAX)recentKeys.shift();
+        stuckCount=0;lastWasEscape=false;
 
         // Periodic waypoints
         const wpInterval=targetM/12;
@@ -815,16 +854,19 @@
         appendLog(`  Impasse a ${(totalDist/1000).toFixed(1)}km (${stuckCount}/5)...`);
         if(stuckCount>=5){appendLog('[Trail] Bloque, fin navigation');break}
 
-        // 1st: backtrack along trail graph to find unused edges (stays off-road)
-        const bt=backtrackToUnused(curKey);
-        if(bt){
-          appendLog(`  Backtrack piste: ${(bt.distance/1000).toFixed(1)}km`);
-          const pts=allPoints.length?bt.points.slice(1):bt.points;
-          pts.forEach(p=>allPoints.push(p));
-          totalDist+=bt.distance;trailDist+=bt.distance;
-          curKey=bt.key;
-          visitedNodes.add(curKey);
-          continue;
+        // 1st: backtrack along trail graph (skip if last action was already an escape)
+        if(!lastWasEscape){
+          const bt=backtrackToUnused(curKey);
+          if(bt&&bt.distance>10){
+            appendLog(`  Backtrack piste: ${(bt.distance/1000).toFixed(1)}km`);
+            const pts=allPoints.length?bt.points.slice(1):bt.points;
+            pts.forEach(p=>allPoints.push(p));
+            totalDist+=bt.distance;trailDist+=bt.distance;
+            curKey=bt.key;
+            visitedNodes.add(curKey);
+            lastWasEscape=true;
+            continue;
+          }
         }
 
         // 2nd: bridge via road to a distant trail junction
@@ -835,6 +877,7 @@
           totalDist+=bridge.distance;roadDist+=bridge.distance;
           curKey=bridge.key;
           visitedNodes.add(curKey);
+          lastWasEscape=true;
           continue;
         }
 
