@@ -254,6 +254,57 @@
   function setMapMode(mode){mapMode=mode;['pan','waypoint'].forEach(m=>{const b=document.getElementById('mapmode-'+m);b.classList.toggle('border-amber-400',m===mode);b.classList.toggle('bg-amber-400/10',m===mode);b.classList.toggle('text-amber-400',m===mode)});if(mode==='pan'){previewState.map.dragging.enable();previewState.map.getContainer().style.cursor=''}else{previewState.map.getContainer().style.cursor='crosshair'}}
 
   /* ══════════════════════════════════════════════════
+     4b. CACHE LOCAL (IndexedDB)
+         Cache les reponses Overpass pour acces instantane
+     ══════════════════════════════════════════════════ */
+
+  const CACHE_DB_NAME='gpx-trail-cache';
+  const CACHE_STORE='overpass';
+  const CACHE_VERSION=1;
+  const CACHE_TTL=7*24*3600*1000; // 7 jours
+
+  function openCacheDB(){
+    return new Promise((resolve,reject)=>{
+      const req=indexedDB.open(CACHE_DB_NAME,CACHE_VERSION);
+      req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(CACHE_STORE))db.createObjectStore(CACHE_STORE)};
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error);
+    });
+  }
+
+  async function cacheGet(key){
+    try{
+      const db=await openCacheDB();
+      return new Promise((resolve)=>{
+        const tx=db.transaction(CACHE_STORE,'readonly');
+        const req=tx.objectStore(CACHE_STORE).get(key);
+        req.onsuccess=()=>{
+          const entry=req.result;
+          if(!entry||Date.now()-entry.ts>CACHE_TTL){resolve(null);return}
+          resolve(entry.data);
+        };
+        req.onerror=()=>resolve(null);
+      });
+    }catch(e){return null}
+  }
+
+  async function cachePut(key,data){
+    try{
+      const db=await openCacheDB();
+      const tx=db.transaction(CACHE_STORE,'readwrite');
+      tx.objectStore(CACHE_STORE).put({data,ts:Date.now()},key);
+    }catch(e){/* cache write failure is non-critical */}
+  }
+
+  async function cacheClear(){
+    try{
+      const db=await openCacheDB();
+      const tx=db.transaction(CACHE_STORE,'readwrite');
+      tx.objectStore(CACHE_STORE).clear();
+    }catch(e){}
+  }
+
+  /* ══════════════════════════════════════════════════
      5. TRAIL NETWORK FETCHING (Overpass)
         Fetches full way geometry + tags for the area
      ══════════════════════════════════════════════════ */
@@ -265,9 +316,17 @@
     const s=(lat-degLat).toFixed(5),n=(lat+degLat).toFixed(5);
     const w=(lon-degLon).toFixed(5),e=(lon+degLon).toFixed(5);
     const bbox=`${s},${w},${n},${e}`;
-    // Single regex filter is faster than multiple way clauses
     const trailTypes=DIFFICULTY_LEVELS[currentDifficulty].types;
     const regex=`^(${trailTypes.join('|')})$`;
+
+    // Check cache first
+    const cacheKey=`${bbox}_${regex}`;
+    const cached=await cacheGet(cacheKey);
+    if(cached){
+      appendLog(`[Cache] ${cached.length} pistes/chemins (instantane)`);
+      return cached;
+    }
+
     const query=`[out:json][timeout:45];way["highway"~"${regex}"](${bbox});out geom tags;`;
 
     for(let attempt=0;attempt<2;attempt++){
@@ -288,6 +347,9 @@
           }
           const ways=(data.elements||[]).filter(el=>el.type==='way'&&el.geometry?.length>=2);
           appendLog(`[Reseau] ${ways.length} pistes/chemins (${(raw.length/1024).toFixed(0)}KB)`);
+          // Store in cache for next time
+          await cachePut(cacheKey,ways);
+          appendLog(`[Cache] Donnees sauvegardees`);
           return ways;
         }catch(err){
           if(err.name==='AbortError')throw err;
