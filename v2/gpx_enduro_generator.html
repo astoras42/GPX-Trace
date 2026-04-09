@@ -260,7 +260,7 @@
 
   const CACHE_DB_NAME='gpx-trail-cache';
   const CACHE_STORE='overpass';
-  const CACHE_VERSION=2; // bump to invalidate old cache
+  const CACHE_VERSION=3; // bump to invalidate old cache
   const CACHE_TTL=7*24*3600*1000; // 7 jours
 
   function openCacheDB(){
@@ -615,7 +615,7 @@
     const halfTarget=targetM/2;
 
     // 1. Fetch trail network - radius = ~distance/2pi (max spread of a loop)
-    const radiusM=Math.min(Math.max(targetKm*160,3000),25000);
+    const radiusM=Math.min(Math.max(targetKm*250,5000),30000);
     const ways=await fetchTrailNetwork(startLat,startLon,radiusM,signal);
     if(!ways.length)throw new Error('Aucune piste/chemin dans la zone');
 
@@ -709,6 +709,21 @@
       else score+=1.0;
       score+=Math.min(e.dist/2000,1.5); // prefer longer segments
 
+      // Trail density: bonus for destinations rich in unused off-road edges (2 hops)
+      const destEdges=gEdges.get(e.to)||[];
+      let offroadNearby=0;
+      for(const de of destEdges){
+        if(de.to===fromKey||isUsed(de,e.to))continue;
+        if(de.hw==='track'||de.hw==='path'){offroadNearby++;
+          // 2nd hop: count off-road edges from de.to too
+          for(const de2 of(gEdges.get(de.to)||[])){
+            if(de2.to===e.to||isUsed(de2,de.to))continue;
+            if(de2.hw==='track'||de2.hw==='path')offroadNearby++;
+          }
+        }
+      }
+      score+=Math.min(offroadNearby*0.4,3.0); // up to +3.0 for trail-rich areas
+
       if(phase==='outbound'){
         score+=Math.min(distToStart/3000,2.0);
       }else{
@@ -716,7 +731,7 @@
         const curDist=curNode?haversine(startLat,startLon,curNode.lat,curNode.lon):0;
         score+=distToStart<curDist?2.0:-0.5;
       }
-      score+=Math.random()*0.5;
+      score+=Math.random()*0.3;
       return score;
     }
 
