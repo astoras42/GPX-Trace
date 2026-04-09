@@ -453,8 +453,8 @@
       }
       if(bestNk){
         const nn=nodes.get(bestNk);
-        edges.get(k).push({to:bestNk,dist:bestD,hw:'track',wayId:-1,points:[n,nn]});
-        edges.get(bestNk).push({to:k,dist:bestD,hw:'track',wayId:-1,points:[nn,n]});
+        edges.get(k).push({to:bestNk,dist:bestD,hw:'heal',wayId:-1,points:[n,nn]});
+        edges.get(bestNk).push({to:k,dist:bestD,hw:'heal',wayId:-1,points:[nn,n]});
         healed++;
       }
     }
@@ -637,7 +637,7 @@
       try{
         const seg=await routeSegment({lat:startLat,lon:startLon},{lat:startNode.lat,lon:startNode.lon},signal);
         seg.points.forEach(p=>allPoints.push(p));
-        totalDist+=seg.distance||0;roadDist+=seg.distance||0;
+        totalDist+=seg.distance||0;distByType.road+=seg.distance||0;
         appendLog(`  Route vers piste: ${(seg.distance/1000).toFixed(1)}km`);
       }catch(e){if(e.name==='AbortError')throw e}
     }
@@ -648,7 +648,9 @@
     const bridgedTo=new Set();
     const recentKeys=[];// last N visited keys for anti-U-turn
     const RECENT_MAX=3;
-    let curKey=startKey,prevKey=null,wpCount=0,phase='outbound',trailDist=0,roadDist=0,lastWasEscape=false;
+    const REAL_OFFROAD=new Set(['track','path']);
+    const distByType={track:0,path:0,unclassified:0,road:0,heal:0};
+    let curKey=startKey,prevKey=null,wpCount=0,phase='outbound',lastWasEscape=false;
 
     function edgeUid(e,fromKey){return`${e.wayId}:${fromKey}:${e.to}`}
     function isUsed(e,fromKey){return usedEdges.has(edgeUid(e,fromKey))||usedEdges.has(edgeUid({wayId:e.wayId,to:fromKey},e.to))}
@@ -698,7 +700,13 @@
         if(totalDeLen*2>budget*0.7)return-Infinity;
       }
 
-      let score=3.0;
+      let score=1.0;
+      // Strongly prefer real off-road (track/path) over unclassified/healing
+      if(e.wayId<0)score-=1.0; // healing edge = last resort connector
+      else if(e.hw==='track')score+=4.0;
+      else if(e.hw==='path')score+=3.5;
+      else if(e.hw==='unclassified')score+=1.0;
+      else score+=1.0;
       score+=Math.min(e.dist/2000,1.5); // prefer longer segments
 
       if(phase==='outbound'){
@@ -742,14 +750,15 @@
         if(navEdges.length>0){
           // Collect all points along the backtrack path
           const pts=[];
-          let dist=0;
+          let dist=0;const edgeTypes=[];
           for(const p of path){
             const segPts=p.edge.points;
             (pts.length?segPts.slice(1):segPts).forEach(pt=>pts.push(pt));
             dist+=p.edge.dist;
+            edgeTypes.push({hw:p.edge.hw||'track',dist:p.edge.dist});
             markUsed(p.edge,p.from);
           }
-          return{key:cur,points:pts,distance:dist};
+          return{key:cur,points:pts,distance:dist,edgeTypes};
         }
       }
       return null;
@@ -772,22 +781,24 @@
         const n=gNodes.get(k);if(!n)continue;
         const d=haversine(fromNode.lat,fromNode.lon,n.lat,n.lon);
         if(d<300||d>MAX_ROAD_BETWEEN_TRAILS)continue; // min 300m away
-        // Check that at least one unused edge would actually score > -Infinity
-        const hasNavigable=edgeList.some(e=>{
-          if(isUsed(e,k))return false;
+        // Count unused navigable edges, preferring track/path
+        let hasOffroad=false,hasAny=false;
+        for(const e of edgeList){
+          if(isUsed(e,k))continue;
           if(deadEnds.has(e.to)){
             const deLen=measureDeadEndTrail(e.to,gEdges)+e.dist;
-            if(deLen<MIN_DEADEND_LENGTH)return false;
+            if(deLen<MIN_DEADEND_LENGTH)continue;
           }
-          return true;
-        });
-        if(hasNavigable)candidates.push({key:k,node:n,dist:d});
+          hasAny=true;
+          if(e.hw==='track'||e.hw==='path')hasOffroad=true;
+        }
+        if(hasAny)candidates.push({key:k,node:n,dist:d,hasOffroad});
       }
       if(!candidates.length)return null;
 
-      // Sort by distance, try closest first
-      candidates.sort((a,b)=>a.dist-b.dist);
-      for(const cand of candidates.slice(0,3)){
+      // Sort: prefer off-road destinations, then by distance
+      candidates.sort((a,b)=>(b.hasOffroad?1:0)-(a.hasOffroad?1:0)||a.dist-b.dist);
+      for(const cand of candidates.slice(0,5)){
         try{
           const seg=await routeSegment(fromNode,cand.node,signal);
           if(seg.distance>MAX_ROAD_BETWEEN_TRAILS*1.5)continue;
@@ -833,7 +844,8 @@
         const pts=allPoints.length?chosen.points.slice(1):chosen.points;
         pts.forEach(p=>allPoints.push(p));
         markUsed(chosen,curKey);
-        totalDist+=chosen.dist;trailDist+=chosen.dist;
+        totalDist+=chosen.dist;
+        distByType[chosen.hw]=(distByType[chosen.hw]||0)+chosen.dist;
         prevKey=curKey;
         curKey=chosen.to;
         visitedNodes.add(curKey);
@@ -861,7 +873,8 @@
             appendLog(`  Backtrack piste: ${(bt.distance/1000).toFixed(1)}km`);
             const pts=allPoints.length?bt.points.slice(1):bt.points;
             pts.forEach(p=>allPoints.push(p));
-            totalDist+=bt.distance;trailDist+=bt.distance;
+            totalDist+=bt.distance;
+            for(const et of bt.edgeTypes)distByType[et.hw]=(distByType[et.hw]||0)+et.dist;
             curKey=bt.key;
             visitedNodes.add(curKey);
             lastWasEscape=true;
@@ -874,7 +887,7 @@
         if(bridge){
           const pts=allPoints.length?bridge.points.slice(1):bridge.points;
           pts.forEach(p=>allPoints.push(p));
-          totalDist+=bridge.distance;roadDist+=bridge.distance;
+          totalDist+=bridge.distance;distByType.road+=bridge.distance;
           curKey=bridge.key;
           visitedNodes.add(curKey);
           lastWasEscape=true;
@@ -895,7 +908,7 @@
       try{
         const seg=await routeSegment(lastNode,{lat:startLat,lon:startLon},signal);
         seg.points.slice(1).forEach(p=>allPoints.push(p));
-        totalDist+=seg.distance||0;roadDist+=seg.distance||0;
+        totalDist+=seg.distance||0;distByType.road+=seg.distance||0;
         appendLog(`  Retour OK ${(seg.distance/1000).toFixed(1)}km`);
       }catch(e){
         if(e.name==='AbortError')throw e;
@@ -906,9 +919,12 @@
     allWaypoints.push({name:'ARRIVEE',lat:startLat,lon:startLon});
 
     // 7. Stats from tracked distances
-    const stats={trail:trailDist,road:roadDist};
+    const offRoadDist=distByType.track+distByType.path;
+    const stats={...distByType,offroad:offRoadDist};
 
     appendLog(`[Trail] Trace: ${(totalDist/1000).toFixed(1)}km, ${allWaypoints.length} WP`);
+    const stTotal=Object.values(distByType).reduce((a,b)=>a+b,0);
+    appendLog(`[Stats] Piste:${(distByType.track/1000).toFixed(1)} Sentier:${(distByType.path/1000).toFixed(1)} Non-class:${(distByType.unclassified/1000).toFixed(1)} Route:${(distByType.road/1000).toFixed(1)} Heal:${(distByType.heal/1000).toFixed(1)} (total comptabilise:${(stTotal/1000).toFixed(1)}km)`);
     return{allWaypoints,route:{points:allPoints,total:totalDist,stats,engine:'Trail+'+( currentEngine==='dijkstra'?'Dijkstra':'BRouter')}};
   }
 
@@ -1025,7 +1041,7 @@
       const meta={startName,targetKm:Math.round(route.total/1000),engine:lastEngineUsed};
       await renderPreview(meta,allWaypoints,route.points,route);
 
-      const offDist=route.stats?.trail||Object.entries(route.stats||{}).reduce((s,[hw,v])=>s+(OFFROAD_TYPES.has(hw)?v:0),0);
+      const offDist=route.stats?.offroad??Object.entries(route.stats||{}).reduce((s,[hw,v])=>s+(OFFROAD_TYPES.has(hw)?v:0),0);
       const offPct=route.total?Math.round(offDist/route.total*100):null;
       const offStr=offPct!==null?` \u00b7 ${offPct}% off-road`:'';
       setStatus(`Trace generee \u00b7 ${(route.total/1000).toFixed(1)} km${offStr} \u00b7 ${lastEngineUsed}`,'ok');
