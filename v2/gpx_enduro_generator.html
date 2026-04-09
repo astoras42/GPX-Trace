@@ -609,7 +609,7 @@
         anti-repeat except within 1km of start (return only)
      ══════════════════════════════════════════════════ */
 
-  async function generateTrailRoute(startLat,startLon,targetKm,signal){
+  async function generateTrailRoute(startLat,startLon,targetKm,signal,exploreFactor=0){
     const targetM=targetKm*1000;
     const tolerance=targetKm<=50?5000:targetM*0.10;
     const halfTarget=targetM/2;
@@ -735,7 +735,7 @@
         const curDist=curNode?haversine(startLat,startLon,curNode.lat,curNode.lon):0;
         score+=distToStart<curDist?2.0:-0.5;
       }
-      score+=Math.random()*0.3;
+      score+=Math.random()*(0.3+exploreFactor*0.8);
       return score;
     }
 
@@ -942,7 +942,8 @@
     allWaypoints.push({name:'ARRIVEE',lat:startLat,lon:startLon});
 
     // 7. Stats from tracked distances
-    const offRoadDist=distByType.track+distByType.path;
+    // track+path = strict off-road, unclassified counts as off-road for diff 3
+    const offRoadDist=distByType.track+distByType.path+(currentDifficulty>=3?distByType.unclassified:0);
     const stats={...distByType,offroad:offRoadDist};
 
     appendLog(`[Trail] Trace: ${(totalDist/1000).toFixed(1)}km, ${allWaypoints.length} WP`);
@@ -1053,9 +1054,34 @@
         setStatus(`Depart : ${startLat.toFixed(4)}, ${startLon.toFixed(4)}`,'ok');
         appendLog(`[Config] ${targetKm} km \u00b7 niv.${currentDifficulty} (${DIFFICULTY_LEVELS[currentDifficulty].label}) \u00b7 moteur ${currentEngine}`);
 
-        const result=await generateTrailRoute(startLat,startLon,targetKm,signal);
-        allWaypoints=result.allWaypoints;
-        route=result.route;
+        // Retry if off-road too low: diff3 >= 60%, diff2 >= 50%
+        const MIN_OFFROAD_PCT=currentDifficulty>=3?60:currentDifficulty>=2?50:0;
+        const MAX_ATTEMPTS=MIN_OFFROAD_PCT>0?3:1;
+        let bestResult=null,bestOffPct=0;
+
+        for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
+          if(signal?.aborted)throw new DOMException('Annule','AbortError');
+          if(attempt>1){
+            clearLog();
+            appendLog(`[Retry] Tentative ${attempt}/${MAX_ATTEMPTS} (meilleur: ${bestOffPct}% off-road)...`);
+            appendLog(`[Config] ${targetKm} km \u00b7 niv.${currentDifficulty} (${DIFFICULTY_LEVELS[currentDifficulty].label}) \u00b7 moteur ${currentEngine}`);
+          }
+
+          const result=await generateTrailRoute(startLat,startLon,targetKm,signal,attempt-1);
+          const offDist=result.route.stats?.offroad||0;
+          const pct=result.route.total?Math.round(offDist/result.route.total*100):0;
+
+          if(pct>bestOffPct){bestResult=result;bestOffPct=pct}
+
+          if(pct>=MIN_OFFROAD_PCT){
+            appendLog(`[OK] ${pct}% off-road >= seuil ${MIN_OFFROAD_PCT}%`);
+            break;
+          }
+          if(attempt<MAX_ATTEMPTS)appendLog(`[Retry] ${pct}% off-road < seuil ${MIN_OFFROAD_PCT}%, recalcul...`);
+          else appendLog(`[Retry] Meilleur resultat: ${bestOffPct}% off-road apres ${MAX_ATTEMPTS} tentatives`);
+        }
+        allWaypoints=bestResult.allWaypoints;
+        route=bestResult.route;
       }
 
       if(!route||!route.points.length)throw new Error('Trace vide.');
