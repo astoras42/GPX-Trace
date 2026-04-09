@@ -658,22 +658,24 @@
     function inStartZone(nodeKey){const n=gNodes.get(nodeKey);return n?haversine(startLat,startLon,n.lat,n.lon)<=START_ZONE_RADIUS:false}
 
     // Check if a node leads to a dead-end chain (degree-2 corridor ending at dead-end)
+    // Ignores healing edges — they create false through-routes
     function isDeadEndChain(nodeKey,fromKey){
       if(deadEnds.has(nodeKey))return measureDeadEndTrail(nodeKey,gEdges);
-      // Walk forward through degree-2 nodes to see if it leads to a dead-end
-      let cur=nodeKey,prev=fromKey,dist=0;
+      let cur=nodeKey,dist=0;
       const seen=new Set([fromKey,nodeKey]);
-      for(let i=0;i<20;i++){
-        const neighbors=(gEdges.get(cur)||[]).filter(e=>!seen.has(e.to));
-        if(neighbors.length===0)return dist; // dead-end reached
-        if(neighbors.length>1)return-1; // real junction = not a dead-end chain
-        dist+=neighbors[0].dist;
-        seen.add(neighbors[0].to);
-        prev=cur;
-        cur=neighbors[0].to;
+      for(let i=0;i<30;i++){
+        // Only count REAL edges (not healing) for chain detection
+        const realNeighbors=(gEdges.get(cur)||[]).filter(e=>!seen.has(e.to)&&e.wayId>=0);
+        const allNeighbors=(gEdges.get(cur)||[]).filter(e=>!seen.has(e.to));
+        if(realNeighbors.length===0&&allNeighbors.length===0)return dist; // true dead-end
+        if(realNeighbors.length===0)return dist; // only healing edges remain = effective dead-end
+        if(realNeighbors.length>1)return-1; // real junction
+        dist+=realNeighbors[0].dist;
+        seen.add(realNeighbors[0].to);
+        cur=realNeighbors[0].to;
         if(deadEnds.has(cur))return dist+measureDeadEndTrail(cur,gEdges);
       }
-      return-1; // long chain, treat as normal
+      return-1;
     }
 
     // Score an edge
@@ -691,14 +693,16 @@
       // Anti-U-turn: strongly penalize going back to recent nodes
       if(recentKeys.includes(e.to))return-Infinity;
 
-      // Dead-end chain detection: check if this edge leads into a dead-end corridor
+      // Dead-end chain detection — absolute rejection for short dead-ends
       const deLen=isDeadEndChain(e.to,fromKey);
       if(deLen>=0){
         const totalDeLen=deLen+e.dist;
-        if(totalDeLen<MIN_DEADEND_LENGTH)return-Infinity;
+        if(totalDeLen<MIN_DEADEND_LENGTH)return-Infinity; // too short, always reject
         const budget=phase==='outbound'?halfTarget-totalDist:targetM-totalDist;
-        if(totalDeLen*2>budget*0.7)return-Infinity;
+        if(budget>0&&totalDeLen*2>budget*0.5)return-Infinity; // would consume too much budget
       }
+      // Healing edge leading to a dead-end node: always reject
+      if(e.wayId<0&&deadEnds.has(e.to))return-Infinity;
 
       let score=1.0;
       // Strongly prefer real off-road (track/path) over unclassified/healing
@@ -760,8 +764,12 @@
         path.push({edge:bestEdge,from:cur});
         visited.add(bestEdge.to);
         cur=bestEdge.to;
-        // If this node has unused navigable edges, success!
-        const navEdges=(gEdges.get(cur)||[]).filter(e=>!visited.has(e.to)&&!isUsed(e,cur)&&scoreEdge(e,cur)>-Infinity);
+        // If this node has unused navigable REAL edges (not just healing to dead-ends)
+        const navEdges=(gEdges.get(cur)||[]).filter(e=>{
+          if(visited.has(e.to)||isUsed(e,cur))return false;
+          if(e.wayId<0&&deadEnds.has(e.to))return false; // heal→dead-end
+          return scoreEdge(e,cur)>-Infinity;
+        });
         if(navEdges.length>0){
           // Collect all points along the backtrack path
           const pts=[];
