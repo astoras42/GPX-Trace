@@ -106,6 +106,7 @@
             <button id="d-1" onclick="setDifficulty(1)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Piste</button>
             <button id="d-2" onclick="setDifficulty(2)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">+Chemin</button>
             <button id="d-3" onclick="setDifficulty(3)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">+Sentier</button>
+            <button id="d-4" onclick="setDifficulty(4)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Ultra Hard</button>
           </div>
           <p class="mt-2 text-[10px] text-slate-500" id="difficulty-hint">Pistes et chemins non classifies</p>
         </section>
@@ -177,7 +178,8 @@
   const DIFFICULTY_LEVELS={
     1:{label:'Piste',hint:'Pistes forestieres et agricoles uniquement',types:['track']},
     2:{label:'Piste + Chemin',hint:'Pistes et chemins non classifies',types:['track','unclassified']},
-    3:{label:'Tout terrain',hint:'Pistes, chemins et sentiers',types:['track','unclassified','path']}
+    3:{label:'Tout terrain',hint:'Pistes, chemins et sentiers',types:['track','unclassified','path']},
+    4:{label:'Ultra Hard',hint:'Sentiers les plus pentus, 85% off-road min, 60km max',types:['track','unclassified','path']}
   };
 
   const ENGINE_HINTS={auto:'BRouter prioritaire, Dijkstra en secours',brouter:'Routage serveur BRouter (rapide)',dijkstra:'Routage local Overpass + graphe OSM (lent mais autonome)'};
@@ -210,7 +212,7 @@
   const distEl=document.getElementById('dist'),distOut=document.getElementById('dist-out');
   const engineLabelEl=document.getElementById('engine-label');
 
-  distEl.oninput=()=>{distOut.textContent=distEl.value;updateSummary()};
+  distEl.oninput=()=>{if(currentDifficulty===4&&parseInt(distEl.value)>60){distEl.value=60}distOut.textContent=distEl.value;updateSummary()};
 
   /* ══════════════════════════════════════════════════
      3. UTILITY FUNCTIONS
@@ -236,7 +238,22 @@
 
   function setMode(name){currentMode=name;['boucle','waypoints'].forEach(m=>{const b=document.getElementById('m-'+m);b.classList.toggle('border-amber-400',m===name);b.classList.toggle('bg-amber-400/10',m===name);b.classList.toggle('text-amber-400',m===name)});const isBoucle=name==='boucle';document.getElementById('section-dist').style.display=isBoucle?'':'none';document.getElementById('gpxbtn').textContent=isBoucle?'Generer le GPX':'Generer le parcours'}
 
-  function setDifficulty(level){currentDifficulty=level;[1,2,3].forEach(l=>{const b=document.getElementById('d-'+l);if(!b)return;b.classList.toggle('border-amber-400',l===level);b.classList.toggle('bg-amber-400/10',l===level);b.classList.toggle('text-amber-400',l===level)});const d=DIFFICULTY_LEVELS[level];document.getElementById('difficulty-label').textContent=d.label;document.getElementById('difficulty-hint').textContent=d.hint;updateSummary()}
+  function setDifficulty(level){
+    currentDifficulty=level;
+    [1,2,3,4].forEach(l=>{const b=document.getElementById('d-'+l);if(!b)return;
+      const isUH=l===4;const activeColor=isUH?'border-red-500':'border-amber-400';const activeBg=isUH?'bg-red-500/10':'bg-amber-400/10';const activeText=isUH?'text-red-400':'text-amber-400';
+      b.classList.toggle(activeColor,l===level);b.classList.toggle(activeBg,l===level);b.classList.toggle(activeText,l===level);
+      // Remove other active colors
+      if(l!==level){b.classList.remove('border-amber-400','bg-amber-400/10','text-amber-400','border-red-500','bg-red-500/10','text-red-400')}
+    });
+    const d=DIFFICULTY_LEVELS[level];
+    document.getElementById('difficulty-label').textContent=d.label;
+    document.getElementById('difficulty-hint').textContent=d.hint;
+    // Cap distance at 60km for Ultra Hard
+    const distEl=document.getElementById('dist');
+    if(level===4&&parseInt(distEl.value)>60){distEl.value=60;distEl.dispatchEvent(new Event('input'))}
+    updateSummary();
+  }
 
   function setEngine(name){currentEngine=name;['auto','brouter','dijkstra'].forEach(e=>{const b=document.getElementById('e-'+e);b.classList.toggle('border-sky-400',e===name);b.classList.toggle('bg-sky-400/10',e===name);b.classList.toggle('text-sky-400',e===name)});engineLabelEl.textContent=name==='auto'?'Auto':name==='brouter'?'BRouter':'Dijkstra';document.getElementById('engine-hint').textContent=ENGINE_HINTS[name];updateSummary()}
 
@@ -471,6 +488,69 @@
     return{nodes,edges,deadEnds};
   }
 
+  /* ══════════════════════════════════════════════════
+     5c. ELEVATION FETCHING (Open-Meteo API)
+         Fetches elevation for graph nodes, computes slope per edge
+     ══════════════════════════════════════════════════ */
+
+  async function fetchElevations(graphNodes,graphEdges,signal){
+    // Collect unique junction nodes (those with edges)
+    const nodeKeys=[];
+    for(const[k]of graphEdges){if(graphNodes.has(k))nodeKeys.push(k)}
+
+    const elevations=new Map();
+    const BATCH=100; // API limit per request
+    const batches=[];
+    for(let i=0;i<nodeKeys.length;i+=BATCH)batches.push(nodeKeys.slice(i,i+BATCH));
+
+    appendLog(`[Elevation] ${nodeKeys.length} noeuds, ${batches.length} requetes...`);
+
+    for(let bi=0;bi<batches.length;bi++){
+      if(signal?.aborted)throw new DOMException('Annule','AbortError');
+      const batch=batches[bi];
+      const lats=batch.map(k=>graphNodes.get(k).lat).join(',');
+      const lons=batch.map(k=>graphNodes.get(k).lon).join(',');
+      try{
+        const resp=await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`,{signal});
+        if(!resp.ok){appendLog(`[Elevation] HTTP ${resp.status}, skip`);continue}
+        const data=await resp.json();
+        const elev=data.elevation||[];
+        for(let i=0;i<batch.length&&i<elev.length;i++){
+          elevations.set(batch[i],elev[i]);
+        }
+      }catch(e){
+        if(e.name==='AbortError')throw e;
+        appendLog(`[Elevation] Erreur batch ${bi+1}: ${e.message}`);
+      }
+      // Small delay between batches to avoid rate limiting
+      if(bi<batches.length-1)await delay(200,signal);
+    }
+
+    appendLog(`[Elevation] ${elevations.size}/${nodeKeys.length} altitudes recues`);
+
+    // Compute slope for each edge
+    const edgeSlopes=new Map(); // key: "fromKey:toKey" -> slope%
+    for(const[k,edgeList]of graphEdges){
+      const elA=elevations.get(k);
+      if(elA===undefined)continue;
+      for(const e of edgeList){
+        const elB=elevations.get(e.to);
+        if(elB===undefined||e.dist<20)continue;
+        const slopePct=Math.abs(elB-elA)/e.dist*100;
+        edgeSlopes.set(`${k}:${e.to}`,slopePct);
+      }
+    }
+
+    const slopes=[...edgeSlopes.values()].filter(s=>s>0);
+    if(slopes.length){
+      const avg=slopes.reduce((a,b)=>a+b,0)/slopes.length;
+      const maxS=Math.max(...slopes);
+      appendLog(`[Elevation] Pentes: moy ${avg.toFixed(1)}%, max ${maxS.toFixed(1)}%`);
+    }
+
+    return{elevations,edgeSlopes};
+  }
+
   function measureDeadEndTrail(startKey,edges){
     let totalDist=0,curKey=startKey;
     const visited=new Set([startKey]);
@@ -623,6 +703,22 @@
     const{nodes:gNodes,edges:gEdges,deadEnds}=buildTrailGraph(ways);
     if(!gEdges.size)throw new Error('Graphe de pistes vide');
 
+    // 2b. Ultra Hard: check trail density and fetch elevations
+    const isUltraHard=currentDifficulty===4;
+    let edgeSlopes=null;
+    if(isUltraHard){
+      // Check off-road edge density (track+path edges)
+      let offroadEdges=0,totalEdges=0;
+      for(const[,edgeList]of gEdges){for(const e of edgeList){totalEdges++;if(e.hw==='track'||e.hw==='path')offroadEdges++}}
+      const density=totalEdges>0?offroadEdges/totalEdges:0;
+      appendLog(`[Ultra] Densite off-road: ${(density*100).toFixed(0)}% (${offroadEdges}/${totalEdges} aretes)`);
+      if(density<0.3)throw new Error('Zone trop peu dense en sentiers pour Ultra Hard. Choisissez une zone plus forestiere/montagneuse.');
+
+      // Fetch elevations for slope scoring
+      const elev=await fetchElevations(gNodes,gEdges,signal);
+      edgeSlopes=elev.edgeSlopes;
+    }
+
     // 3. Snap start to nearest trail junction
     const startSnap=findNearestTrailNode(startLat,startLon,gNodes,gEdges);
     if(!startSnap||startSnap.dist>5000)throw new Error('Aucune piste a moins de 5km du depart');
@@ -727,6 +823,17 @@
         }
       }
       score+=Math.min(offroadNearby*0.4,3.0); // up to +3.0 for trail-rich areas
+
+      // Ultra Hard: massive bonus for steep slopes
+      if(isUltraHard&&edgeSlopes){
+        const slope=edgeSlopes.get(`${fromKey}:${e.to}`)||0;
+        if(slope>=15)score+=6.0;       // extreme >15%
+        else if(slope>=10)score+=4.5;  // very steep 10-15%
+        else if(slope>=6)score+=3.0;   // steep 6-10%
+        else if(slope>=3)score+=1.0;   // moderate 3-6%
+        // flat trails get no bonus, penalize roads even more
+        if(e.hw!=='track'&&e.hw!=='path')score-=2.0;
+      }
 
       if(phase==='outbound'){
         score+=Math.min(distToStart/3000,2.0);
@@ -1055,7 +1162,7 @@
         appendLog(`[Config] ${targetKm} km \u00b7 niv.${currentDifficulty} (${DIFFICULTY_LEVELS[currentDifficulty].label}) \u00b7 moteur ${currentEngine}`);
 
         // Retry if off-road too low: diff3 >= 60%, diff2 >= 50%
-        const MIN_OFFROAD_PCT=currentDifficulty>=3?60:currentDifficulty>=2?50:0;
+        const MIN_OFFROAD_PCT=currentDifficulty>=4?85:currentDifficulty>=3?60:currentDifficulty>=2?50:0;
         const MAX_ATTEMPTS=MIN_OFFROAD_PCT>0?3:1;
         let bestResult=null,bestOffPct=0;
 
