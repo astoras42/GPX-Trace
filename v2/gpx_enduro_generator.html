@@ -185,8 +185,13 @@
   const ENGINE_HINTS={auto:'BRouter prioritaire, Dijkstra en secours',brouter:'Routage serveur BRouter (rapide)',dijkstra:'Routage local Overpass + graphe OSM (lent mais autonome)'};
 
   const BROUTER_SERVER='https://brouter.de/brouter';
-  const OVERPASS_SERVERS=['https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter'];
+  const OVERPASS_REMOTE=['https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter'];
   const OVERPASS_OK_DELAY=2500,OVERPASS_FAIL_DELAY=2000;
+
+  // Local tiles system (pre-extracted from PBF)
+  const TILE_DEG=0.1;
+  let localTilesAvailable=null; // null=unknown, true/false after meta.json check
+  let localTilesMeta=null;
 
   // Trail navigation constants
   const MAX_ROAD_BETWEEN_TRAILS=3000; // 3km max de route entre 2 pistes
@@ -344,30 +349,67 @@
       return cached;
     }
 
+    // Try local tiles first (pre-extracted from PBF, gzipped)
+    if(localTilesAvailable===null){
+      try{
+        const mr=await fetch('tiles/meta.json');
+        if(mr.ok){localTilesMeta=await mr.json();localTilesAvailable=true;appendLog(`[Tuiles] ${localTilesMeta.ways} chemins, ${localTilesMeta.tiles} tuiles locales`);}
+        else localTilesAvailable=false;
+      }catch{localTilesAvailable=false}
+    }
+    if(localTilesAvailable){
+      try{
+        const south=parseFloat(s),north=parseFloat(n),west=parseFloat(w),east=parseFloat(e);
+        const minTY=Math.floor(south/TILE_DEG),maxTY=Math.floor(north/TILE_DEG);
+        const minTX=Math.floor(west/TILE_DEG),maxTX=Math.floor(east/TILE_DEG);
+        const tileCount=(maxTY-minTY+1)*(maxTX-minTX+1);
+        appendLog(`[Tuiles] Chargement ${tileCount} tuiles locales...`);
+        const re=new RegExp(regex);
+        const elements=[],seenIds=new Set();
+        for(let ty=minTY;ty<=maxTY;ty++){
+          for(let tx=minTX;tx<=maxTX;tx++){
+            if(signal?.aborted)throw new DOMException('Annule','AbortError');
+            try{
+              const tr=await fetch(`tiles/${ty}_${tx}.json.gz`,{signal});
+              if(!tr.ok)continue;
+              // Decompress gzip with native DecompressionStream
+              const stream=tr.body.pipeThrough(new DecompressionStream('gzip'));
+              const text=await new Response(stream).text();
+              const td=JSON.parse(text);
+              for(const el of(td.elements||[])){
+                if(!seenIds.has(el.id)&&re.test(el.tags?.highway||'')){seenIds.add(el.id);elements.push(el)}
+              }
+            }catch(te){if(te.name==='AbortError')throw te;}
+          }
+        }
+        appendLog(`[Tuiles] ${elements.length} pistes/chemins (local, instantane)`);
+        await cachePut(cacheKey,elements);
+        return elements;
+      }catch(te){if(te.name==='AbortError')throw te;appendLog(`[Tuiles] Erreur: ${te.message}, fallback...`)}
+    }
+
     const query=`[out:json][timeout:45];way["highway"~"${regex}"](${bbox});out geom tags;`;
 
+    async function tryServer(server,label){
+      const resp=await fetch(server,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:new URLSearchParams({data:query}),signal});
+      const raw=await resp.text();
+      if(!resp.ok)throw new Error(`HTTP ${resp.status}`);
+      let data;
+      try{data=JSON.parse(raw)}catch(e){throw new Error('Reponse non-JSON')}
+      const ways=(data.elements||[]).filter(el=>el.type==='way'&&el.geometry?.length>=2);
+      appendLog(`[${label}] ${ways.length} pistes/chemins (${(raw.length/1024).toFixed(0)}KB)`);
+      await cachePut(cacheKey,ways);
+      appendLog(`[Cache] Donnees sauvegardees`);
+      return ways;
+    }
+
+    // Fallback: remote servers
     for(let attempt=0;attempt<2;attempt++){
-      for(const server of OVERPASS_SERVERS){
+      for(const server of OVERPASS_REMOTE){
         try{
           const host=server.split('/')[2];
           appendLog(`[Reseau] ${host} bbox ${(radiusM/1000).toFixed(0)}km...`);
-          const resp=await fetch(server,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:new URLSearchParams({data:query}),signal});
-          const raw=await resp.text();
-          if(!resp.ok){
-            appendLog(`[Reseau] HTTP ${resp.status}, serveur suivant...`);
-            await delay(1500,signal);continue;
-          }
-          let data;
-          try{data=JSON.parse(raw)}catch(parseErr){
-            appendLog(`[Reseau] Reponse non-JSON, serveur suivant...`);
-            await delay(1500,signal);continue;
-          }
-          const ways=(data.elements||[]).filter(el=>el.type==='way'&&el.geometry?.length>=2);
-          appendLog(`[Reseau] ${ways.length} pistes/chemins (${(raw.length/1024).toFixed(0)}KB)`);
-          // Store in cache for next time
-          await cachePut(cacheKey,ways);
-          appendLog(`[Cache] Donnees sauvegardees`);
-          return ways;
+          return await tryServer(server,'Reseau');
         }catch(err){
           if(err.name==='AbortError')throw err;
           appendLog(`[Reseau] Echec: ${err.message}`);
@@ -495,48 +537,120 @@
 
   async function fetchElevations(graphNodes,graphEdges,signal){
     // Collect unique junction nodes (those with edges)
-    const nodeKeys=[];
-    for(const[k]of graphEdges){if(graphNodes.has(k))nodeKeys.push(k)}
+    const allNodeKeys=[];
+    for(const[k]of graphEdges){if(graphNodes.has(k))allNodeKeys.push(k)}
 
-    const elevations=new Map();
-    const BATCH=100; // API limit per request
-    const batches=[];
-    for(let i=0;i<nodeKeys.length;i+=BATCH)batches.push(nodeKeys.slice(i,i+BATCH));
+    // Spatial sampling via grid to limit API requests.
+    // Adaptive: ~550m for small graphs, ~1.1km for large ones (>10k nodes)
+    // → keeps total samples around 2500 max so we stay under daily quota.
+    const GRID_DEG=allNodeKeys.length>10000?0.010:(allNodeKeys.length>5000?0.0075:0.005);
+    const gridM=Math.round(GRID_DEG*111000);
+    const cellMap=new Map(); // gridKey -> first nodeKey in cell
+    const nodeToCell=new Map(); // nodeKey -> gridKey (for slope lookup)
+    for(const k of allNodeKeys){
+      const n=graphNodes.get(k);
+      const gk=`${Math.floor(n.lat/GRID_DEG)}_${Math.floor(n.lon/GRID_DEG)}`;
+      nodeToCell.set(k,gk);
+      if(!cellMap.has(gk))cellMap.set(gk,k);
+    }
+    const sampledKeys=[...cellMap.values()];
 
-    appendLog(`[Elevation] ${nodeKeys.length} noeuds, ${batches.length} requetes...`);
+    const elevations=new Map(); // nodeKey -> elev (representative or own)
 
-    for(let bi=0;bi<batches.length;bi++){
-      if(signal?.aborted)throw new DOMException('Annule','AbortError');
-      const batch=batches[bi];
-      const lats=batch.map(k=>graphNodes.get(k).lat).join(',');
-      const lons=batch.map(k=>graphNodes.get(k).lon).join(',');
-      try{
-        const resp=await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`,{signal});
-        if(!resp.ok){appendLog(`[Elevation] HTTP ${resp.status}, skip`);continue}
-        const data=await resp.json();
-        const elev=data.elevation||[];
-        for(let i=0;i<batch.length&&i<elev.length;i++){
-          elevations.set(batch[i],elev[i]);
+    // Load persistent cache from localStorage (key: "lat,lon" rounded to 4 decimals)
+    let cache={};
+    try{cache=JSON.parse(localStorage.getItem('elevCache_v1')||'{}')}catch{}
+    const cacheKey=n=>`${n.lat.toFixed(4)},${n.lon.toFixed(4)}`;
+
+    // Check cache for sampled nodes
+    let fromCache=0;
+    const toFetch=[];
+    for(const k of sampledKeys){
+      const n=graphNodes.get(k);
+      const ck=cacheKey(n);
+      if(cache[ck]!==undefined){elevations.set(k,cache[ck]);fromCache++}
+      else toFetch.push(k);
+    }
+    appendLog(`[Elevation] ${allNodeKeys.length} noeuds -> ${sampledKeys.length} echantillons (grille ${gridM}m)`);
+
+    if(toFetch.length>0){
+      const BATCH=100; // API limit per request
+      const BASE_DELAY=1200; // wide delay to avoid 429
+      const batches=[];
+      for(let i=0;i<toFetch.length;i+=BATCH)batches.push(toFetch.slice(i,i+BATCH));
+
+      appendLog(`[Elevation] ${fromCache} en cache, ${toFetch.length} a recuperer (${batches.length} req)`);
+
+      let okBatches=0,rateLimitHits=0,consecutive429=0,giveUp=false;
+      for(let bi=0;bi<batches.length&&!giveUp;bi++){
+        if(signal?.aborted)throw new DOMException('Annule','AbortError');
+        const batch=batches[bi];
+        const lats=batch.map(k=>graphNodes.get(k).lat).join(',');
+        const lons=batch.map(k=>graphNodes.get(k).lon).join(',');
+
+        // Retry up to 2 times on 429 with short backoff (2.4s, 4.8s)
+        let success=false;
+        for(let attempt=0;attempt<2&&!success;attempt++){
+          try{
+            const resp=await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lats}&longitude=${lons}`,{signal});
+            if(resp.status===429){
+              rateLimitHits++;
+              const wait=BASE_DELAY*Math.pow(2,attempt+1);
+              await delay(wait,signal);
+              continue;
+            }
+            if(!resp.ok)break;
+            const data=await resp.json();
+            const elev=data.elevation||[];
+            for(let i=0;i<batch.length&&i<elev.length;i++){
+              elevations.set(batch[i],elev[i]);
+              const n=graphNodes.get(batch[i]);
+              cache[cacheKey(n)]=elev[i];
+            }
+            success=true;okBatches++;consecutive429=0;
+          }catch(e){
+            if(e.name==='AbortError')throw e;
+            break;
+          }
         }
-      }catch(e){
-        if(e.name==='AbortError')throw e;
-        appendLog(`[Elevation] Erreur batch ${bi+1}: ${e.message}`);
+        if(!success){
+          consecutive429++;
+          // Give up after 2 consecutive batch failures (rate limit hard, exit fast)
+          if(consecutive429>=2){giveUp=true;appendLog(`[Elevation] Rate limit persistent, abandon (${okBatches}/${batches.length} batches OK, donnees partielles)`)}
+        }
+        if(bi<batches.length-1&&!giveUp)await delay(BASE_DELAY,signal);
+        if((bi+1)%5===0&&!giveUp)appendLog(`  ${bi+1}/${batches.length} batches (${okBatches} OK, ${rateLimitHits} 429)`);
       }
-      // Small delay between batches to avoid rate limiting
-      if(bi<batches.length-1)await delay(200,signal);
+
+      // Persist cache
+      try{localStorage.setItem('elevCache_v1',JSON.stringify(cache))}catch{}
     }
 
-    appendLog(`[Elevation] ${elevations.size}/${nodeKeys.length} altitudes recues`);
+    // Propagate sampled elevations to all nodes via grid cell lookup
+    let propagated=0;
+    for(const k of allNodeKeys){
+      if(elevations.has(k))continue;
+      const cellRep=cellMap.get(nodeToCell.get(k));
+      if(cellRep&&elevations.has(cellRep)){
+        elevations.set(k,elevations.get(cellRep));
+        propagated++;
+      }
+    }
+    appendLog(`[Elevation] ${elevations.size}/${allNodeKeys.length} noeuds couverts (${fromCache} cache + ${elevations.size-fromCache-propagated} API + ${propagated} propages)`);
 
-    // Compute slope for each edge
+    // Compute slope for each edge — cap at 60% to filter aberrant elevation data
     const edgeSlopes=new Map(); // key: "fromKey:toKey" -> slope%
+    let aberrant=0;
     for(const[k,edgeList]of graphEdges){
       const elA=elevations.get(k);
-      if(elA===undefined)continue;
+      if(elA===undefined||elA===0)continue; // 0m in mountains = missing data
       for(const e of edgeList){
         const elB=elevations.get(e.to);
-        if(elB===undefined||e.dist<20)continue;
+        if(elB===undefined||elB===0||e.dist<20)continue;
+        // Skip edges within the same grid cell (no real slope info, both nodes share same elev)
+        if(nodeToCell.get(k)===nodeToCell.get(e.to))continue;
         const slopePct=Math.abs(elB-elA)/e.dist*100;
+        if(slopePct>60){aberrant++;continue} // discard aberrant slopes (>60% = >31°)
         edgeSlopes.set(`${k}:${e.to}`,slopePct);
       }
     }
@@ -545,7 +659,7 @@
     if(slopes.length){
       const avg=slopes.reduce((a,b)=>a+b,0)/slopes.length;
       const maxS=Math.max(...slopes);
-      appendLog(`[Elevation] Pentes: moy ${avg.toFixed(1)}%, max ${maxS.toFixed(1)}%`);
+      appendLog(`[Elevation] Pentes: moy ${avg.toFixed(1)}%, max ${maxS.toFixed(1)}% sur ${slopes.length} aretes (${aberrant} aberrants)`);
     }
 
     return{elevations,edgeSlopes};
@@ -641,7 +755,7 @@
 
   async function fetchTile(bbox,server,types,signal){const[latMin,lonMin,latMax,lonMax]=bbox,filters=types.map(t=>`way["highway"="${t}"](${latMin},${lonMin},${latMax},${lonMax});`).join(''),query=`[out:json][timeout:60];(${filters});out geom tags;`,resp=await fetch(server,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body:new URLSearchParams({data:query}),signal}),raw=await resp.text();if(!resp.ok)throw new Error(`HTTP ${resp.status}`);try{const json=JSON.parse(raw);return json.elements||[]}catch(e){const m=raw.match(/<remark>(.*?)<\/remark>/i)||raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);throw new Error(m?m[1].replace(/<[^>]+>/g,' ').trim():'Reponse Overpass invalide')}}
 
-  async function fetchAllTiles(bboxes,types,signal){const all=[],seen=new Set();for(let i=0;i<bboxes.length;i++){if(signal?.aborted)throw new DOMException('Annule','AbortError');appendLog(`  Tuile ${i+1}/${bboxes.length}`);let ok=false;for(let attempt=0;attempt<2&&!ok;attempt++){if(attempt>0){appendLog('    Retry 5s...');await delay(5000,signal)}for(const server of OVERPASS_SERVERS){const host=server.replace('https://','').split('/')[0];try{const els=await fetchTile(bboxes[i],server,types,signal);let added=0;for(const el of els){if(seen.has(el.id))continue;seen.add(el.id);all.push(el);added++}appendLog(`    OK ${host} (+${added})`);ok=true;await delay(OVERPASS_OK_DELAY,signal);break}catch(e){if(e.name==='AbortError')throw e;appendLog(`    Echec ${host}: ${e.message}`);await delay(OVERPASS_FAIL_DELAY,signal)}}}if(!ok)appendLog('    Tuile ignoree')}return all}
+  async function fetchAllTiles(bboxes,types,signal){const all=[],seen=new Set();for(let i=0;i<bboxes.length;i++){if(signal?.aborted)throw new DOMException('Annule','AbortError');appendLog(`  Tuile ${i+1}/${bboxes.length}`);let ok=false;for(let attempt=0;attempt<2&&!ok;attempt++){if(attempt>0){appendLog('    Retry 5s...');await delay(5000,signal)}for(const server of OVERPASS_REMOTE){const host=server.replace(/https?:\/\//,'').split('/')[0];try{const els=await fetchTile(bboxes[i],server,types,signal);let added=0;for(const el of els){if(seen.has(el.id))continue;seen.add(el.id);all.push(el);added++}appendLog(`    OK ${host} (+${added})`);ok=true;await delay(OVERPASS_OK_DELAY,signal);break}catch(e){if(e.name==='AbortError')throw e;appendLog(`    Echec ${host}: ${e.message}`);await delay(OVERPASS_FAIL_DELAY,signal)}}}if(!ok)appendLog('    Tuile ignoree')}return all}
 
   function buildGraph(elements,costMap,prefs){const coords=new Map(),adj=new Map();let edges=0;const ensure=k=>{if(!adj.has(k))adj.set(k,[]);return adj.get(k)};for(const way of elements){if(!way.geometry||way.geometry.length<2)continue;const hw=way.tags?.highway||'track',baseMult=costMap[hw],mult=Number.isFinite(baseMult)?baseMult*terrainBiasFromTags(way.tags||{},prefs,hw):baseMult;if(!Number.isFinite(mult)||mult>=9999)continue;const nodes=way.geometry.map(pt=>{const lat=Number(pt.lat),lon=Number(pt.lon),key=keyFromLatLon(lat,lon);if(!coords.has(key))coords.set(key,{lat,lon});return key});for(let i=1;i<nodes.length;i++){const a=nodes[i-1],b=nodes[i],cA=coords.get(a),cB=coords.get(b),dist=haversine(cA.lat,cA.lon,cB.lat,cB.lon);ensure(a).push({to:b,dist,cost:dist*mult,hw});ensure(b).push({to:a,dist,cost:dist*mult,hw});edges++}}return{coords,adj,edgeCount:edges}}
 
@@ -774,6 +888,27 @@
       return-1;
     }
 
+    // Runtime exit check (1-step lookahead): does e.to have any usable exit
+    // considering current edge usage? Returns count of usable exits (capped at 3).
+    // Excludes the back-edge (e.to -> fromKey).
+    function countUsableExits(nodeKey,backKey){
+      const edges=gEdges.get(nodeKey)||[];
+      let n=0;
+      for(const e of edges){
+        if(e.to===backKey)continue; // back-edge
+        if(isUsed(e,nodeKey)){
+          // Used edges only count in start-zone return phase
+          if(phase==='return'&&inStartZone(nodeKey)&&inStartZone(e.to)){n++;if(n>=3)return n}
+          continue;
+        }
+        if(e.wayId<0&&deadEnds.has(e.to))continue;
+        const dl=isDeadEndChain(e.to,nodeKey);
+        if(dl>=0&&dl+e.dist<MIN_DEADEND_LENGTH)continue;
+        n++;if(n>=3)return n;
+      }
+      return n;
+    }
+
     // Score an edge
     function scoreEdge(e,fromKey){
       const toNode=gNodes.get(e.to);
@@ -800,6 +935,10 @@
       // Healing edge leading to a dead-end node: always reject
       if(e.wayId<0&&deadEnds.has(e.to))return-Infinity;
 
+      // Runtime exit check: reject if destination has no usable exit (would be immediate impasse)
+      const exits=countUsableExits(e.to,fromKey);
+      if(exits===0)return-Infinity;
+
       let score=1.0;
       // Strongly prefer real off-road (track/path) over unclassified/healing
       if(e.wayId<0)score-=1.0; // healing edge = last resort connector
@@ -824,15 +963,40 @@
       }
       score+=Math.min(offroadNearby*0.4,3.0); // up to +3.0 for trail-rich areas
 
-      // Ultra Hard: massive bonus for steep slopes
+      // Near-dead penalty (only 1 usable exit besides back-edge)
+      // In Ultra Hard, also check if a sibling with exits>=2 exists; if yes, reject hard
+      if(exits===1){
+        if(isUltraHard){
+          // Look for any sibling edge from fromKey with exits>=2 (proper junction available)
+          let hasBetterSibling=false;
+          const siblings=gEdges.get(fromKey)||[];
+          for(const se of siblings){
+            if(se.to===e.to||se.to===prevKey)continue;
+            if(isUsed(se,fromKey))continue;
+            if(se.wayId<0&&deadEnds.has(se.to))continue;
+            const sdl=isDeadEndChain(se.to,fromKey);
+            if(sdl>=0&&sdl+se.dist<MIN_DEADEND_LENGTH)continue;
+            if(countUsableExits(se.to,fromKey)>=2){hasBetterSibling=true;break}
+          }
+          if(hasBetterSibling)return-Infinity; // hard reject when we have a better option
+          score-=8.0; // otherwise heavy penalty (was -5)
+        }else{
+          score-=2.5;
+        }
+      }
+
+      // Penalize re-visiting nodes during outbound phase (favor fresh territory)
+      if(phase==='outbound'&&visitedNodes.has(e.to))score-=isUltraHard?5.0:2.5;
+
+      // Ultra Hard: bonus for steep slopes (reduced so dead-end avoidance dominates)
       if(isUltraHard&&edgeSlopes){
         const slope=edgeSlopes.get(`${fromKey}:${e.to}`)||0;
-        if(slope>=15)score+=6.0;       // extreme >15%
-        else if(slope>=10)score+=4.5;  // very steep 10-15%
-        else if(slope>=6)score+=3.0;   // steep 6-10%
-        else if(slope>=3)score+=1.0;   // moderate 3-6%
+        if(slope>=15)score+=4.0;       // extreme >15%
+        else if(slope>=10)score+=3.0;  // very steep 10-15%
+        else if(slope>=6)score+=2.0;   // steep 6-10%
+        else if(slope>=3)score+=0.5;   // moderate 3-6%
         // flat trails get no bonus, penalize roads even more
-        if(e.hw!=='track'&&e.hw!=='path')score-=2.0;
+        if(e.hw!=='track'&&e.hw!=='path')score-=2.5;
       }
 
       if(phase==='outbound'){
@@ -847,7 +1011,7 @@
     }
 
     // Backtrack along used trail edges to find a junction with unused navigable edges
-    function backtrackToUnused(fromKey,maxHops=8){
+    function backtrackToUnused(fromKey,maxHops=15){
       let cur=fromKey;
       const visited=new Set([cur]);
       const path=[];// {edge, fromKey}

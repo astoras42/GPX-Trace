@@ -1,0 +1,11 @@
+{
+  "name": "gpx-trail-extractor",
+  "private": true,
+  "scripts": {
+    "extract": "node --max-old-space-size=8192 extract_trails.js"
+  },
+  "dependencies": {
+    "osm-pbf-parser": "^2.3.0",
+    "through2": "^4.0.2"
+  }
+}
