@@ -9,7 +9,7 @@ const zlib = require('zlib');
 const PBF_PATH = path.join(__dirname, 'france-260408.osm.pbf');
 const TILES_DIR = path.join(__dirname, 'tiles');
 const TILE_DEG = 0.1;
-const HIGHWAYS = new Set(['track', 'path', 'unclassified']);
+const HIGHWAYS = new Set(['track', 'path', 'unclassified', 'tertiary', 'secondary']);
 const KEEP_TAGS = new Set(['highway', 'surface', 'tracktype', 'name', 'smoothness', 'trail_visibility', 'sac_scale']);
 const CHUNK = 200000; // process ways in chunks to bound memory
 

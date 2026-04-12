@@ -1,164 +1,189 @@
 <!DOCTYPE html>
-<html class="light" lang="fr">
+<html class="dark" lang="fr">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Precision Explorer v2 | Enduro GPX Generator</title>
+  <title>GPX Generator</title>
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script>
-    tailwind.config = { darkMode:'class', theme:{ extend:{ colors:{ background:'#0b1220', primary:'#f59e0b', primary2:'#fb923c' }, fontFamily:{ headline:['Manrope','sans-serif'], body:['Inter','sans-serif'] }, boxShadow:{ glow:'0 0 24px rgba(245,158,11,.18)' } } } }
+    tailwind.config = { darkMode:'class', theme:{ extend:{ colors:{ gblue:'#4285f4', ggreen:'#34a853', gyellow:'#fbbc04', gred:'#ea4335' }, fontFamily:{ body:['Inter','sans-serif'] } } } }
   </script>
   <style>
     .material-symbols-outlined{font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24;vertical-align:middle}
-    input[type="range"]{accent-color:#f59e0b}
-    #viewer-map .leaflet-control-attribution{background:rgba(15,23,42,.85);color:#cbd5e1}
-    #viewer-map .leaflet-control-attribution a{color:#fcd34d}
-    .scrollbar-thin::-webkit-scrollbar{width:8px;height:8px}.scrollbar-thin::-webkit-scrollbar-thumb{background:#334155;border-radius:999px}
-    #map-container.fullscreen{position:fixed!important;inset:0!important;z-index:900!important;border-radius:0!important;margin:0!important;border:none!important}
+    input[type="range"]{accent-color:#4285f4}
+    .dark input[type="range"]{accent-color:#8ab4f8}
+    .scrollbar-thin::-webkit-scrollbar{width:6px;height:6px}.scrollbar-thin::-webkit-scrollbar-thumb{background:#555;border-radius:999px}
+    #map-container.fullscreen{position:fixed!important;inset:0!important;z-index:900!important;border-radius:0!important;margin:0!important}
+    /* Light mode */
+    html:not(.dark) body{background:#f8f9fa;color:#202124}
+    html:not(.dark) #viewer-map .leaflet-control-attribution{background:rgba(255,255,255,.85);color:#5f6368}
+    html:not(.dark) #viewer-map .leaflet-control-attribution a{color:#4285f4}
+    html:not(.dark) .panel-bg{background:#fff;border-color:#dadce0}
+    html:not(.dark) .chip-bg{background:#e8eaed;color:#3c4043}
+    html:not(.dark) .card-bg{background:#fff;border-color:#dadce0;color:#202124}
+    html:not(.dark) .muted{color:#5f6368}
+    html:not(.dark) .input-bg{background:#f1f3f4;border-color:#dadce0}
+    html:not(.dark) .hover-bg:hover{background:#f1f3f4}
+    /* Dark mode */
+    .dark body{background:#1e1e1e;color:#e8eaed}
+    .dark #viewer-map .leaflet-control-attribution{background:rgba(32,33,36,.9);color:#9aa0a6}
+    .dark #viewer-map .leaflet-control-attribution a{color:#8ab4f8}
+    .dark .panel-bg{background:#2d2e30;border-color:#3c4043}
+    .dark .chip-bg{background:#3c4043;color:#e8eaed}
+    .dark .card-bg{background:#2d2e30;border-color:#3c4043;color:#e8eaed}
+    .dark .muted{color:#9aa0a6}
+    .dark .input-bg{background:#3c4043;border-color:#5f6368}
+    .dark .hover-bg:hover{background:#3c4043}
+    /* Map controls Google-style */
+    .map-ctrl{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.3);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+    .map-ctrl:hover{background:#f1f3f4}
+    .dark .map-ctrl{background:#2d2e30;color:#e8eaed;box-shadow:0 1px 4px rgba(0,0,0,.6)}
+    .dark .map-ctrl:hover{background:#3c4043}
+    /* Status pill */
+    .status-pill{backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
   </style>
 </head>
-<body class="bg-slate-950 font-body text-slate-100 overflow-hidden h-screen flex flex-col">
+<body class="font-body overflow-hidden h-screen flex flex-col">
 
-  <!-- ═══════════════════ HEADER ═══════════════════ -->
-  <header class="fixed top-0 left-0 right-0 z-50 h-16 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-6">
-    <div class="flex items-center gap-6 min-w-0">
-      <div>
-        <h1 class="font-headline text-xl font-extrabold tracking-tight text-white">Precision Explorer <span class="text-amber-400 text-sm">v2</span></h1>
-        <p class="text-xs text-slate-400">BRouter + Dijkstra &middot; Traces GPX enduro</p>
-      </div>
-      <div class="hidden lg:flex items-center gap-3 rounded-xl bg-slate-900/70 px-4 py-2 border border-slate-800">
-        <span class="material-symbols-outlined text-amber-400">route</span>
-        <div>
-          <p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Trace affichee</p>
-          <p class="text-sm font-semibold text-slate-100" id="pv-name">Aucune</p>
-        </div>
-      </div>
+  <!-- ═══════════════════ HEADER (compact, Google-style search bar look) ═══════════════════ -->
+  <header class="fixed top-0 left-0 right-0 z-50 h-12 panel-bg border-b flex items-center justify-between px-4 gap-3" style="border-color:var(--border)">
+    <div class="flex items-center gap-3 min-w-0">
+      <h1 class="font-bold text-base tracking-tight whitespace-nowrap"><span class="text-gblue dark:text-[#8ab4f8]">GPX</span> Generator</h1>
     </div>
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2">
       <input type="file" id="preview-file" accept=".gpx" class="hidden"/>
-      <button class="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-800" onclick="document.getElementById('preview-file').click()"><span class="material-symbols-outlined text-base">upload_file</span>Charger GPX</button>
-      <button class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-400 px-4 py-2 text-sm font-bold text-slate-950 shadow-glow hover:brightness-110 disabled:opacity-50" id="fitbtn" onclick="fitPreviewRoute()" disabled><span class="material-symbols-outlined text-base">my_location</span>Recentrer</button>
+      <button class="map-ctrl rounded-full px-3 py-1.5 text-xs font-medium gap-1.5 inline-flex items-center" onclick="document.getElementById('preview-file').click()"><span class="material-symbols-outlined text-sm">upload_file</span><span class="hidden sm:inline">Importer</span></button>
+      <button class="map-ctrl rounded-full px-3 py-1.5 text-xs font-medium gap-1.5 inline-flex items-center disabled:opacity-40" id="fitbtn" onclick="fitPreviewRoute()" disabled><span class="material-symbols-outlined text-sm">my_location</span><span class="hidden sm:inline">Recentrer</span></button>
+      <button id="log-toggle-btn" onclick="toggleLog()" title="Journal" class="map-ctrl rounded-full w-8 h-8"><span class="material-symbols-outlined text-sm">terminal</span></button>
+      <button onclick="toggleTheme()" title="Theme clair/sombre" class="map-ctrl rounded-full w-8 h-8"><span id="theme-icon" class="material-symbols-outlined text-sm">dark_mode</span></button>
     </div>
   </header>
 
   <!-- ═══════════════════ MAIN ═══════════════════ -->
-  <main class="flex-1 pt-16 pb-12 pr-0 xl:pr-80">
+  <main class="flex-1 pt-12 pr-0 xl:pr-80 relative">
     <div class="h-full flex flex-col">
 
-      <!-- Stats bar (collapsible) -->
-      <section class="border-b border-slate-800 bg-slate-950/30 backdrop-blur-sm">
-        <button onclick="toggleStatsBar()" class="w-full flex items-center justify-between px-6 py-2 text-[10px] uppercase tracking-[0.14em] text-slate-400 hover:text-slate-200 transition-colors">
-          <span class="flex items-center gap-2"><span class="material-symbols-outlined text-sm">bar_chart</span>Statistiques</span>
-          <span id="stats-toggle-icon" class="material-symbols-outlined text-base">expand_less</span>
-        </button>
-        <div id="stats-grid" class="grid grid-cols-2 lg:grid-cols-5 gap-4 px-6 pb-4">
-          <div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Distance</p><p class="font-headline text-2xl font-extrabold text-white" id="pv-dist">&mdash;</p></div>
-          <div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Off-road reel</p><p class="font-headline text-2xl font-extrabold text-white" id="pv-offroad">&mdash;</p></div>
-          <div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Waypoints / points</p><p class="font-headline text-2xl font-extrabold text-white" id="pv-points">&mdash;</p></div>
-          <div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Moteur utilise</p><p class="font-headline text-lg font-extrabold text-white" id="pv-engine">&mdash;</p></div>
-          <div class="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Configuration</p><div class="mt-1 flex flex-wrap gap-2 text-xs text-slate-300" id="summary"></div></div>
-        </div>
+      <!-- Stats bar (compact, Google-style chips) -->
+      <section class="panel-bg border-b px-4 py-1.5 flex items-center gap-3 overflow-x-auto text-xs">
+        <button onclick="toggleStatsBar()" class="muted hover-bg rounded-full px-2 py-1 inline-flex items-center gap-1 flex-shrink-0"><span class="material-symbols-outlined text-sm">bar_chart</span><span id="stats-toggle-icon" class="material-symbols-outlined text-xs">expand_more</span></button>
+        <span class="chip-bg rounded-full px-3 py-1 font-medium flex-shrink-0" id="pv-dist">&mdash;</span>
+        <span class="chip-bg rounded-full px-3 py-1 font-medium flex-shrink-0" id="pv-offroad">&mdash;</span>
+        <span class="chip-bg rounded-full px-3 py-1 font-medium flex-shrink-0" id="pv-points">&mdash;</span>
+        <span class="chip-bg rounded-full px-3 py-1 font-medium flex-shrink-0" id="pv-engine">&mdash;</span>
+        <div class="flex-shrink-0 flex gap-1.5" id="summary"></div>
       </section>
 
-      <!-- Map -->
-      <section class="flex-1 p-6 min-h-0">
-        <div id="map-container" class="relative h-full overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 shadow-2xl shadow-black/30">
+      <!-- Stats detail (hidden by default) -->
+      <div id="stats-grid" class="panel-bg border-b px-4 py-3 hidden">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <div class="card-bg rounded-xl px-3 py-2 border"><p class="muted text-[10px] uppercase tracking-wider">Distance</p><p class="font-bold text-lg" id="pv-dist2">&mdash;</p></div>
+          <div class="card-bg rounded-xl px-3 py-2 border"><p class="muted text-[10px] uppercase tracking-wider">Off-road</p><p class="font-bold text-lg" id="pv-offroad2">&mdash;</p></div>
+          <div class="card-bg rounded-xl px-3 py-2 border"><p class="muted text-[10px] uppercase tracking-wider">Points</p><p class="font-bold text-lg" id="pv-points2">&mdash;</p></div>
+          <div class="card-bg rounded-xl px-3 py-2 border"><p class="muted text-[10px] uppercase tracking-wider">Moteur</p><p class="font-bold text-lg" id="pv-engine2">&mdash;</p></div>
+        </div>
+      </div>
+
+      <!-- Map (fullscreen feel) -->
+      <section class="flex-1 min-h-0 relative">
+        <div id="map-container" class="relative h-full overflow-hidden">
           <div id="viewer-map" class="h-full w-full"></div>
-          <div class="absolute left-4 top-4 z-[450] max-w-md rounded-2xl border border-slate-800 bg-slate-950/75 backdrop-blur-md px-4 py-3"><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Statut</p><p class="mt-1 text-sm font-semibold text-slate-100" id="status">Pret.</p></div>
-          <div class="absolute right-4 top-4 z-[450] flex flex-col gap-2">
-            <button id="mapmode-pan" onclick="setMapMode('pan')" title="Deplacer" class="flex items-center justify-center w-10 h-10 rounded-xl border border-slate-700 bg-slate-950/80 backdrop-blur-md text-slate-300 hover:bg-slate-800"><span class="material-symbols-outlined text-lg">pan_tool</span></button>
-            <button id="mapmode-waypoint" onclick="setMapMode('waypoint')" title="Waypoints" class="flex items-center justify-center w-10 h-10 rounded-xl border border-slate-700 bg-slate-950/80 backdrop-blur-md text-slate-300 hover:bg-slate-800"><span class="material-symbols-outlined text-lg">add_location</span></button>
-            <button onclick="toggleMapFullscreen()" title="Plein ecran" class="flex items-center justify-center w-10 h-10 rounded-xl border border-slate-700 bg-slate-950/80 backdrop-blur-md text-slate-300 hover:bg-slate-800"><span id="fullscreen-icon" class="material-symbols-outlined text-lg">fullscreen</span></button>
+
+          <!-- Status pill (Google Maps style, top-left floating) -->
+          <div class="absolute left-3 top-3 z-[450] status-pill panel-bg rounded-full px-4 py-2 shadow-lg border inline-flex items-center gap-2 max-w-xs">
+            <span class="material-symbols-outlined text-sm text-gblue dark:text-[#8ab4f8]">info</span>
+            <p class="text-xs font-medium truncate" id="status">Pret.</p>
           </div>
-          <div class="absolute left-4 bottom-4 right-4 z-[450] rounded-2xl border border-slate-800 bg-slate-950/75 backdrop-blur-md p-4">
-            <button onclick="toggleLog()" class="w-full flex items-center justify-between mb-1 text-left">
-              <div><p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Journal de generation</p><p class="text-xs text-slate-400">BRouter, Overpass, Dijkstra, export</p></div>
-              <span id="log-toggle-icon" class="material-symbols-outlined text-base text-slate-400 flex-shrink-0 ml-2">expand_less</span>
-            </button>
-            <div id="log-body"><pre id="log" class="scrollbar-thin mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-xs text-slate-300"></pre></div>
+
+          <!-- Right map controls (Google Maps style) -->
+          <div class="absolute right-3 top-3 z-[450] flex flex-col gap-1.5">
+            <button id="mapmode-pan" onclick="setMapMode('pan')" title="Deplacer" class="map-ctrl rounded-lg w-10 h-10"><span class="material-symbols-outlined text-lg">pan_tool</span></button>
+            <button id="mapmode-waypoint" onclick="setMapMode('waypoint')" title="Ajouter des points" class="map-ctrl rounded-lg w-10 h-10"><span class="material-symbols-outlined text-lg">add_location</span></button>
+            <div class="h-px"></div>
+            <button onclick="toggleMapFullscreen()" title="Plein ecran" class="map-ctrl rounded-lg w-10 h-10"><span id="fullscreen-icon" class="material-symbols-outlined text-lg">fullscreen</span></button>
+          </div>
+
+          <!-- Layer switcher (bottom-left, Google Maps style) -->
+          <div class="absolute left-3 bottom-3 z-[450]">
+            <div id="layer-menu" class="hidden panel-bg rounded-xl shadow-lg border p-2 mb-2 min-w-[140px]">
+              <button onclick="switchLayer('carto')" class="layer-opt w-full text-left rounded-lg px-3 py-2 text-xs font-medium hover-bg flex items-center gap-2"><span class="material-symbols-outlined text-sm">map</span>Standard</button>
+              <button onclick="switchLayer('osm')" class="layer-opt w-full text-left rounded-lg px-3 py-2 text-xs font-medium hover-bg flex items-center gap-2"><span class="material-symbols-outlined text-sm">public</span>OpenStreetMap</button>
+              <button onclick="switchLayer('topo')" class="layer-opt w-full text-left rounded-lg px-3 py-2 text-xs font-medium hover-bg flex items-center gap-2"><span class="material-symbols-outlined text-sm">terrain</span>Topo (OSM)</button>
+              <button onclick="switchLayer('satellite')" class="layer-opt w-full text-left rounded-lg px-3 py-2 text-xs font-medium hover-bg flex items-center gap-2"><span class="material-symbols-outlined text-sm">satellite_alt</span>Satellite</button>
+            </div>
+            <button onclick="toggleLayerMenu()" title="Fond de carte" class="map-ctrl rounded-lg w-10 h-10"><span class="material-symbols-outlined text-lg">layers</span></button>
+          </div>
+
+          <!-- Journal (hidden by default, bottom overlay) -->
+          <div id="log-panel" class="absolute left-3 right-3 bottom-3 z-[440] panel-bg rounded-xl shadow-lg border p-3 hidden">
+            <div class="flex items-center justify-between mb-1">
+              <p class="text-[10px] uppercase tracking-wider muted font-medium">Journal</p>
+              <button onclick="toggleLog()" class="muted hover-bg rounded-full w-6 h-6 flex items-center justify-center"><span class="material-symbols-outlined text-sm">close</span></button>
+            </div>
+            <pre id="log" class="scrollbar-thin max-h-32 overflow-auto whitespace-pre-wrap text-[11px] muted"></pre>
           </div>
         </div>
       </section>
     </div>
   </main>
 
-  <!-- ═══════════════════ ASIDE ═══════════════════ -->
-  <aside class="fixed right-0 top-0 z-40 h-full w-full max-w-xs border-l border-slate-800 bg-slate-950/92 backdrop-blur-xl pt-16 hidden xl:flex flex-col">
-    <div class="scrollbar-thin flex-1 overflow-y-auto p-6">
-      <div class="mb-8"><h2 class="font-headline text-lg font-bold text-slate-100">Parametres de trace</h2><p class="text-xs text-slate-400">Navigation reseau de pistes</p></div>
-      <div class="space-y-6">
+  <!-- ═══════════════════ ASIDE (Google Maps directions panel style) ═══════════════════ -->
+  <aside class="fixed right-0 top-0 z-40 h-full w-full max-w-xs panel-bg border-l pt-12 hidden xl:flex flex-col shadow-xl">
+    <div class="scrollbar-thin flex-1 overflow-y-auto px-4 py-5">
+      <div class="space-y-5">
 
         <!-- Mode -->
-        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
-          <label class="mb-3 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Mode de generation</label>
+        <section>
+          <label class="mb-2 block text-[10px] font-semibold uppercase tracking-wider muted">Mode</label>
           <div class="grid grid-cols-2 gap-2 text-xs">
-            <button id="m-boucle" onclick="setMode('boucle')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Boucle auto</button>
-            <button id="m-waypoints" onclick="setMode('waypoints')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Par waypoints</button>
+            <button id="m-boucle" onclick="setMode('boucle')" class="rounded-full border px-3 py-2 font-medium input-bg hover-bg transition-colors">Boucle auto</button>
+            <button id="m-waypoints" onclick="setMode('waypoints')" class="rounded-full border px-3 py-2 font-medium input-bg hover-bg transition-colors">Waypoints</button>
           </div>
         </section>
 
-        <!-- Difficulty Level -->
-        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
-          <div class="mb-3 flex items-center justify-between"><label class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Niveau de difficulte</label><span class="text-xs font-semibold text-amber-400" id="difficulty-label">Piste + Chemin</span></div>
-          <div class="grid grid-cols-3 gap-2 text-xs">
-            <button id="d-1" onclick="setDifficulty(1)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Piste</button>
-            <button id="d-2" onclick="setDifficulty(2)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">+Chemin</button>
-            <button id="d-3" onclick="setDifficulty(3)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">+Sentier</button>
-            <button id="d-4" onclick="setDifficulty(4)" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Ultra Hard</button>
+        <!-- Difficulty -->
+        <section>
+          <div class="mb-2 flex items-center justify-between"><label class="text-[10px] font-semibold uppercase tracking-wider muted">Difficulte</label><span class="text-xs font-semibold text-gblue dark:text-[#8ab4f8]" id="difficulty-label">Piste + Chemin</span></div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <button id="d-1" onclick="setDifficulty(1)" class="rounded-full border px-3 py-2 font-medium input-bg hover-bg transition-colors">Piste</button>
+            <button id="d-2" onclick="setDifficulty(2)" class="rounded-full border px-3 py-2 font-medium input-bg hover-bg transition-colors">+ Chemin</button>
+            <button id="d-3" onclick="setDifficulty(3)" class="rounded-full border px-3 py-2 font-medium input-bg hover-bg transition-colors">+ Sentier</button>
+            <button id="d-4" onclick="setDifficulty(4)" class="rounded-full border px-3 py-2 font-medium input-bg hover-bg transition-colors">Ultra Hard</button>
           </div>
-          <p class="mt-2 text-[10px] text-slate-500" id="difficulty-hint">Pistes et chemins non classifies</p>
+          <p class="mt-1.5 text-[10px] muted" id="difficulty-hint">Pistes et chemins non classifies</p>
         </section>
 
-        <!-- Engine -->
-        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
-          <div class="mb-3 flex items-center justify-between"><label class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Moteur de routage</label><span class="text-xs font-semibold text-sky-400" id="engine-label">Auto</span></div>
-          <div class="grid grid-cols-3 gap-2 text-xs">
-            <button id="e-auto" onclick="setEngine('auto')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Auto</button>
-            <button id="e-brouter" onclick="setEngine('brouter')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">BRouter</button>
-            <button id="e-dijkstra" onclick="setEngine('dijkstra')" class="rounded-xl border border-slate-700 px-3 py-2 text-slate-300">Dijkstra</button>
-          </div>
-          <p class="mt-2 text-[10px] text-slate-500" id="engine-hint">BRouter prioritaire, Dijkstra en secours</p>
-        </section>
-
-        <!-- Sliders -->
-        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800 space-y-4">
-          <div id="section-dist"><div class="mb-2 flex justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500"><span>Distance</span><span><span id="dist-out">160</span> km</span></div><input id="dist" type="range" min="30" max="300" step="5" value="160" class="w-full"/></div>
-        </section>
-
-        <!-- Algorithm info -->
-        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
-          <label class="mb-3 block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Algorithme</label>
-          <div class="space-y-2 text-[11px] text-slate-400">
-            <p>Navigation du reseau de pistes OSM</p>
-            <p>Analyse culs-de-sac &middot; Max 3km route</p>
-            <p>Anti-repetition sauf zone depart (1km)</p>
+        <!-- Distance slider -->
+        <section>
+          <div id="section-dist">
+            <div class="mb-2 flex justify-between text-[10px] font-semibold uppercase tracking-wider muted"><span>Distance</span><span class="text-gblue dark:text-[#8ab4f8]"><span id="dist-out">160</span> km</span></div>
+            <input id="dist" type="range" min="30" max="300" step="5" value="160" class="w-full h-1.5 rounded-full appearance-none cursor-pointer"/>
           </div>
         </section>
 
+        <hr class="border-0 h-px" style="background:var(--border,#dadce0)">
 
         <!-- Waypoints -->
-        <section class="rounded-2xl bg-slate-900/60 p-4 border border-slate-800">
-          <div class="mb-3 flex items-center justify-between gap-2"><label class="block text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Waypoints de la trace</label><button id="clear-map-wpts" type="button" onclick="clearManualWaypoints()" class="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300 hover:border-red-400 hover:text-red-300">Effacer</button></div>
-          <div id="viewer-wpts" class="scrollbar-thin max-h-56 overflow-auto space-y-2 text-xs text-slate-300"><div class="rounded-xl bg-slate-950/60 px-3 py-2 text-slate-500">Clique sur la carte pour ajouter des points de passage.</div></div>
+        <section>
+          <div class="mb-2 flex items-center justify-between gap-2"><label class="text-[10px] font-semibold uppercase tracking-wider muted">Waypoints</label><button id="clear-map-wpts" type="button" onclick="clearManualWaypoints()" class="rounded-full px-2.5 py-1 text-[10px] font-medium text-gred dark:text-[#f28b82] hover-bg transition-colors">Effacer</button></div>
+          <div id="viewer-wpts" class="scrollbar-thin max-h-56 overflow-auto space-y-1.5 text-xs"><div class="card-bg rounded-lg border px-3 py-2 muted text-[11px]">Cliquez sur la carte pour ajouter des points.</div></div>
         </section>
 
       </div>
     </div>
     <!-- Action buttons -->
-    <div class="border-t border-slate-800 bg-slate-950 p-6 space-y-3">
-      <button id="gpxbtn" onclick="generate()" class="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-400 px-4 py-4 font-headline text-sm font-extrabold text-slate-950 shadow-glow hover:brightness-110"><span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">auto_graph</span>Generer le GPX</button>
-      <button id="cancelbtn" onclick="cancelGeneration()" class="hidden w-full items-center justify-center gap-2 rounded-xl border border-red-700 bg-red-950/50 px-4 py-3 text-sm font-semibold text-red-300 hover:bg-red-900/50"><span class="material-symbols-outlined text-base">cancel</span>Annuler</button>
-      <button id="downloadbtn" onclick="downloadGpx()" class="hidden w-full items-center justify-center gap-2 rounded-xl border border-emerald-700 bg-emerald-950/50 px-4 py-3 text-sm font-semibold text-emerald-300 hover:bg-emerald-900/50"><span class="material-symbols-outlined text-base">download</span>Telecharger le GPX</button>
+    <div class="border-t panel-bg px-4 py-4 space-y-2.5">
+      <button id="gpxbtn" onclick="generate()" class="flex w-full items-center justify-center gap-2 rounded-full bg-gblue dark:bg-[#8ab4f8] px-4 py-3 text-sm font-bold text-white dark:text-[#202124] shadow-md hover:brightness-110 transition-all"><span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' 1;">route</span>Generer le GPX</button>
+      <button id="cancelbtn" onclick="cancelGeneration()" class="hidden w-full items-center justify-center gap-2 rounded-full border border-gred/30 bg-gred/10 px-4 py-2.5 text-sm font-semibold text-gred dark:text-[#f28b82] hover:bg-gred/20 transition-colors"><span class="material-symbols-outlined text-base">cancel</span>Annuler</button>
+      <button id="downloadbtn" onclick="downloadGpx()" class="hidden w-full items-center justify-center gap-2 rounded-full border border-ggreen/30 bg-ggreen/10 px-4 py-2.5 text-sm font-semibold text-ggreen dark:text-[#81c995] hover:bg-ggreen/20 transition-colors"><span class="material-symbols-outlined text-base">download</span>Telecharger GPX</button>
     </div>
   </aside>
 
-  <!-- ═══════════════════ FOOTER ═══════════════════ -->
-  <footer class="fixed bottom-0 left-0 right-0 xl:right-80 h-12 border-t border-slate-800 bg-slate-950/90 backdrop-blur-md px-6 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-slate-500">
-    <div class="flex items-center gap-6"><span class="text-amber-400 font-bold">Precision Explorer v2 &copy; 2026</span><span>BRouter &middot; Overpass &middot; OpenStreetMap &middot; Leaflet</span></div>
-    <div class="hidden md:flex items-center gap-2"><span class="material-symbols-outlined text-xs">gps_fixed</span><span>Dual engine routing</span></div>
-  </footer>
+  <!-- Hidden elements kept for JS references -->
+  <span id="pv-name" class="hidden">Aucune</span>
+  <span id="engine-label" class="hidden">Auto</span>
+  <span id="engine-hint" class="hidden"></span>
 
   <!-- ═══════════════════ SCRIPTS ═══════════════════ -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -182,7 +207,7 @@
     4:{label:'Ultra Hard',hint:'Sentiers les plus pentus, 85% off-road min, 60km max',types:['track','unclassified','path']}
   };
 
-  const ENGINE_HINTS={auto:'BRouter prioritaire, Dijkstra en secours',brouter:'Routage serveur BRouter (rapide)',dijkstra:'Routage local Overpass + graphe OSM (lent mais autonome)'};
+  const ENGINE_HINTS={auto:'Dijkstra local (respecte la difficulte), BRouter en secours',brouter:'Routage serveur BRouter (rapide, ignore la difficulte)',dijkstra:'Routage local OSM + graphe (respecte la difficulte)'};
 
   const BROUTER_SERVER='https://brouter.de/brouter';
   const OVERPASS_REMOTE=['https://overpass.kumi.systems/api/interpreter','https://overpass-api.de/api/interpreter'];
@@ -199,13 +224,15 @@
   const START_ZONE_RADIUS=1000;       // 1km rayon zone depart (reutilisation retour)
 
   // Dijkstra costs (for manual waypoints fallback)
-  const DIJKSTRA_COSTS={track:1.5,path:1.0,unclassified:6.0,tertiary:7.0,secondary:8.5};
-  const TYPES=['track','path','unclassified','tertiary','secondary'];
+  // 'road' = unclassified with paved surface (reclassified in buildGraph)
+  const DIJKSTRA_COSTS={track:1.5,path:1.0,unclassified:6.0,road:7.0,tertiary:7.0,secondary:8.5};
+  const TYPES=['track','path','unclassified','road','tertiary','secondary'];
 
   const ACCESS_TAGS_ORDER=['motorcycle','motorcar','motor_vehicle','vehicle','access'];
   const ACCESS_DENIED=new Set(['no','private']);
   const ACCESS_ALLOWED=new Set(['yes','permissive','designated','official']);
   const PAVED_SURFACES=new Set(['asphalt','paved','concrete','concrete:lanes','concrete:plates','paving_stones','sett','cobblestone']);
+  const UNPAVED_SURFACES=new Set(['compacted','fine_gravel','gravel','pebblestone','woodchips','dirt','earth','ground','mud','sand','clay','rock','rocks','stone','grass','grass_paver','unpaved','wood']);
   const COMPACT_SURFACES=new Set(['compacted','fine_gravel','gravel','pebblestone','woodchips']);
   const LOOSE_SURFACES=new Set(['dirt','earth','ground','mud','sand','clay']);
   const ROUGH_SURFACES=new Set(['rock','rocks','stone','grass','grass_paver']);
@@ -241,39 +268,60 @@
 
   function cancelGeneration(){if(cancelController)cancelController.abort()}
 
-  function setMode(name){currentMode=name;['boucle','waypoints'].forEach(m=>{const b=document.getElementById('m-'+m);b.classList.toggle('border-amber-400',m===name);b.classList.toggle('bg-amber-400/10',m===name);b.classList.toggle('text-amber-400',m===name)});const isBoucle=name==='boucle';document.getElementById('section-dist').style.display=isBoucle?'':'none';document.getElementById('gpxbtn').textContent=isBoucle?'Generer le GPX':'Generer le parcours'}
+  function setMode(name){currentMode=name;['boucle','waypoints'].forEach(m=>{const b=document.getElementById('m-'+m);if(!b)return;const active=m===name;b.classList.toggle('bg-gblue',active);b.classList.toggle('dark:bg-[#8ab4f8]',active);b.classList.toggle('text-white',active);b.classList.toggle('dark:text-[#202124]',active);b.classList.toggle('border-gblue',active);b.classList.toggle('dark:border-[#8ab4f8]',active);if(!active){b.classList.remove('bg-gblue','dark:bg-[#8ab4f8]','text-white','dark:text-[#202124]','border-gblue','dark:border-[#8ab4f8]')}});const isBoucle=name==='boucle';document.getElementById('section-dist').style.display=isBoucle?'':'none'}
 
   function setDifficulty(level){
     currentDifficulty=level;
     [1,2,3,4].forEach(l=>{const b=document.getElementById('d-'+l);if(!b)return;
-      const isUH=l===4;const activeColor=isUH?'border-red-500':'border-amber-400';const activeBg=isUH?'bg-red-500/10':'bg-amber-400/10';const activeText=isUH?'text-red-400':'text-amber-400';
-      b.classList.toggle(activeColor,l===level);b.classList.toggle(activeBg,l===level);b.classList.toggle(activeText,l===level);
-      // Remove other active colors
-      if(l!==level){b.classList.remove('border-amber-400','bg-amber-400/10','text-amber-400','border-red-500','bg-red-500/10','text-red-400')}
+      const active=l===level;const isUH=l===4;
+      const ac=isUH?'bg-gred':'bg-gblue';const acd=isUH?'dark:bg-[#f28b82]':'dark:bg-[#8ab4f8]';
+      const bc=isUH?'border-gred':'border-gblue';const bcd=isUH?'dark:border-[#f28b82]':'dark:border-[#8ab4f8]';
+      b.classList.toggle(ac,active);b.classList.toggle(acd,active);b.classList.toggle('text-white',active);b.classList.toggle('dark:text-[#202124]',active);b.classList.toggle(bc,active);b.classList.toggle(bcd,active);
+      if(!active){b.classList.remove('bg-gblue','dark:bg-[#8ab4f8]','bg-gred','dark:bg-[#f28b82]','text-white','dark:text-[#202124]','border-gblue','dark:border-[#8ab4f8]','border-gred','dark:border-[#f28b82]')}
     });
     const d=DIFFICULTY_LEVELS[level];
     document.getElementById('difficulty-label').textContent=d.label;
     document.getElementById('difficulty-hint').textContent=d.hint;
-    // Cap distance at 60km for Ultra Hard
     const distEl=document.getElementById('dist');
     if(level===4&&parseInt(distEl.value)>60){distEl.value=60;distEl.dispatchEvent(new Event('input'))}
     updateSummary();
   }
 
-  function setEngine(name){currentEngine=name;['auto','brouter','dijkstra'].forEach(e=>{const b=document.getElementById('e-'+e);b.classList.toggle('border-sky-400',e===name);b.classList.toggle('bg-sky-400/10',e===name);b.classList.toggle('text-sky-400',e===name)});engineLabelEl.textContent=name==='auto'?'Auto':name==='brouter'?'BRouter':'Dijkstra';document.getElementById('engine-hint').textContent=ENGINE_HINTS[name];updateSummary()}
+  function setEngine(name){currentEngine=name;const el=document.getElementById('engine-label');if(el)el.textContent=name==='auto'?'Auto':name==='brouter'?'BRouter':'Dijkstra';const eh=document.getElementById('engine-hint');if(eh)eh.textContent=ENGINE_HINTS[name];updateSummary()}
 
-  function updateSummary(){const d=DIFFICULTY_LEVELS[currentDifficulty],eng=currentEngine==='auto'?'Auto':currentEngine==='brouter'?'BR':'DJ',items=[`${distEl.value} km`,`Niv.${currentDifficulty}`,d.label,eng];document.getElementById('summary').innerHTML=items.map(i=>`<span class="rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-200">${i}</span>`).join('')}
+  function updateSummary(){const d=DIFFICULTY_LEVELS[currentDifficulty],items=[`${distEl.value} km`,`Niv.${currentDifficulty}`,d.label];document.getElementById('summary').innerHTML=items.map(i=>`<span class="chip-bg rounded-full px-2.5 py-0.5 text-[11px] font-medium">${i}</span>`).join('')}
 
-  function setStatus(message,state=''){const el=document.getElementById('status');el.textContent=message;el.className=state==='err'?'mt-1 text-sm font-semibold text-red-400':state==='ok'?'mt-1 text-sm font-semibold text-emerald-400':'mt-1 text-sm font-semibold text-slate-100'}
+  function setStatus(message,state=''){const el=document.getElementById('status');el.textContent=message;el.className=state==='err'?'text-xs font-medium truncate text-gred dark:text-[#f28b82]':state==='ok'?'text-xs font-medium truncate text-ggreen dark:text-[#81c995]':'text-xs font-medium truncate'}
   function clearLog(){document.getElementById('log').textContent=''}
   function appendLog(msg){const log=document.getElementById('log');log.textContent+=(log.textContent?'\n':'')+msg;log.scrollTop=log.scrollHeight}
 
-  function toggleStatsBar(){const g=document.getElementById('stats-grid'),i=document.getElementById('stats-toggle-icon'),h=g.style.display==='none';g.style.display=h?'':'none';i.textContent=h?'expand_less':'expand_more'}
-  function toggleLog(){const b=document.getElementById('log-body'),i=document.getElementById('log-toggle-icon'),h=b.style.display==='none';b.style.display=h?'':'none';i.textContent=h?'expand_less':'expand_more'}
+  function toggleStatsBar(){const g=document.getElementById('stats-grid'),i=document.getElementById('stats-toggle-icon'),h=g.classList.contains('hidden');g.classList.toggle('hidden');i.textContent=h?'expand_less':'expand_more'}
+  function toggleLog(){const p=document.getElementById('log-panel');p.classList.toggle('hidden')}
   function toggleMapFullscreen(){const c=document.getElementById('map-container'),i=document.getElementById('fullscreen-icon');c.classList.toggle('fullscreen');i.textContent=c.classList.contains('fullscreen')?'fullscreen_exit':'fullscreen';setTimeout(()=>previewState.map.invalidateSize(),100)}
+  function toggleTheme(){const html=document.documentElement;const isDark=html.classList.contains('dark');html.classList.toggle('dark');const icon=document.getElementById('theme-icon');icon.textContent=isDark?'dark_mode':'light_mode';if(currentTileLayer)switchLayer(currentLayerName)}
+  function toggleLayerMenu(){document.getElementById('layer-menu').classList.toggle('hidden')}
+  let currentTileLayer=null,currentLayerName='carto';
+  function switchLayer(name){
+    currentLayerName=name;
+    if(currentTileLayer)previewState.map.removeLayer(currentTileLayer);
+    const urls={
+      carto:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      osm:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      topo:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+      satellite:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+    };
+    const attribs={
+      carto:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com">CARTO</a>',
+      osm:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      topo:'&copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
+      satellite:'&copy; Esri, Maxar, Earthstar Geographics'
+    };
+    currentTileLayer=L.tileLayer(urls[name],{attribution:attribs[name],subdomains:name==='satellite'?'a':'abcd',maxZoom:name==='topo'?17:19}).addTo(previewState.map);
+    document.getElementById('layer-menu').classList.add('hidden');
+  }
 
   let mapMode='pan';
-  function setMapMode(mode){mapMode=mode;['pan','waypoint'].forEach(m=>{const b=document.getElementById('mapmode-'+m);b.classList.toggle('border-amber-400',m===mode);b.classList.toggle('bg-amber-400/10',m===mode);b.classList.toggle('text-amber-400',m===mode)});if(mode==='pan'){previewState.map.dragging.enable();previewState.map.getContainer().style.cursor=''}else{previewState.map.getContainer().style.cursor='crosshair'}}
+  function setMapMode(mode){mapMode=mode;['pan','waypoint'].forEach(m=>{const b=document.getElementById('mapmode-'+m);if(!b)return;const active=m===mode;b.classList.toggle('!bg-gblue',active);b.classList.toggle('dark:!bg-[#8ab4f8]',active);b.classList.toggle('!text-white',active);b.classList.toggle('dark:!text-[#202124]',active);if(!active){b.classList.remove('!bg-gblue','dark:!bg-[#8ab4f8]','!text-white','dark:!text-[#202124]')}});if(mode==='pan'){previewState.map.dragging.enable();previewState.map.getContainer().style.cursor=''}else{previewState.map.getContainer().style.cursor='crosshair'}}
 
   /* ══════════════════════════════════════════════════
      4b. CACHE LOCAL (IndexedDB)
@@ -331,14 +379,9 @@
         Fetches full way geometry + tags for the area
      ══════════════════════════════════════════════════ */
 
-  async function fetchTrailNetwork(lat,lon,radiusM,signal){
-    // bbox is much faster than around on Overpass
-    const degLat=radiusM/111320;
-    const degLon=radiusM/(111320*Math.cos(lat*Math.PI/180));
-    const s=(lat-degLat).toFixed(5),n=(lat+degLat).toFixed(5);
-    const w=(lon-degLon).toFixed(5),e=(lon+degLon).toFixed(5);
+  // Bbox-based fetcher: shared by fetchTrailNetwork (radius) and waypoint mode (bbox)
+  async function fetchTrailNetworkBbox(s,n,w,e,trailTypes,signal,sizeLabel){
     const bbox=`${s},${w},${n},${e}`;
-    const trailTypes=DIFFICULTY_LEVELS[currentDifficulty].types;
     const regex=`^(${trailTypes.join('|')})$`;
 
     // Check cache first
@@ -408,7 +451,7 @@
       for(const server of OVERPASS_REMOTE){
         try{
           const host=server.split('/')[2];
-          appendLog(`[Reseau] ${host} bbox ${(radiusM/1000).toFixed(0)}km...`);
+          appendLog(`[Reseau] ${host} bbox ${sizeLabel||''}...`);
           return await tryServer(server,'Reseau');
         }catch(err){
           if(err.name==='AbortError')throw err;
@@ -419,6 +462,16 @@
       if(attempt===0)appendLog('[Reseau] Retry...');
     }
     return[];
+  }
+
+  async function fetchTrailNetwork(lat,lon,radiusM,signal){
+    // bbox is much faster than around on Overpass
+    const degLat=radiusM/111320;
+    const degLon=radiusM/(111320*Math.cos(lat*Math.PI/180));
+    const s=(lat-degLat).toFixed(5),n=(lat+degLat).toFixed(5);
+    const w=(lon-degLon).toFixed(5),e=(lon+degLon).toFixed(5);
+    const trailTypes=DIFFICULTY_LEVELS[currentDifficulty].types;
+    return await fetchTrailNetworkBbox(s,n,w,e,trailTypes,signal,`${(radiusM/1000).toFixed(0)}km`);
   }
 
   /* ══════════════════════════════════════════════════
@@ -452,7 +505,11 @@
     // Second pass: split ways at junctions into segments
     for(const way of ways){
       if(!way.geometry||way.geometry.length<2)continue;
-      const hw=way.tags?.highway||'track';
+      let hw=way.tags?.highway||'track';
+      // Surface-based reclassification (same logic as buildGraph)
+      const sf=(way.tags?.surface||'').toLowerCase();
+      if(hw==='unclassified'&&!UNPAVED_SURFACES.has(sf))hw='road';
+      else if(hw==='track'&&PAVED_SURFACES.has(sf)&&(way.tags?.tracktype||'')==='grade1')hw='road';
       const pts=way.geometry.map(p=>({lat:Number(p.lat),lon:Number(p.lon)}));
       const keys=pts.map(p=>snapKey(p.lat,p.lon));
 
@@ -693,7 +750,13 @@
      6. BROUTER ENGINE
      ══════════════════════════════════════════════════ */
 
-  function brouterProfileName(){return'trekking'}
+  function brouterProfileName(){
+    // BRouter profiles disponibles publiquement: trekking, fastbike, shortest, car-fast, car-eco
+    // niv 1 (Piste) → trekking (mixte route + piste)
+    // niv 2-3 (Tout terrain) → fastbike (privilegie pistes/sentiers)
+    // niv 4 (Ultra Hard) → fastbike (BRouter ne fait pas mieux pour le pur off-road)
+    return currentDifficulty>=2?'fastbike':'trekking';
+  }
 
   async function brouterSegment(from,to,signal){
     const url=`${BROUTER_SERVER}?lonlats=${from.lon},${from.lat}|${to.lon},${to.lat}&profile=${brouterProfileName()}&alternativeidx=0&format=geojson`;
@@ -724,11 +787,11 @@
     const elements=await fetchAllTiles(bboxes,types,signal);
     if(!elements.length)throw new Error('Aucun chemin OSM');
     const{coords,adj}=buildGraph(elements,costMap,prefs);
-    healGraph(coords,adj,200);
-    const sFrom=nearestNode(from.lat,from.lon,coords),sTo=nearestNode(to.lat,to.lon,coords);
+    healGraph(coords,adj,25);
+    const sFrom=nearestNode(from.lat,from.lon,coords,adj),sTo=nearestNode(to.lat,to.lon,coords,adj);
     const r=aStarRoute(sFrom.node,sTo.node,adj,coords);
     if(!r)return{points:fallbackSegment(from,to),distance:haversine(from.lat,from.lon,to.lat,to.lon)};
-    const pts=reconstructPath(r.nodes).map(k=>coords.get(k)).filter(Boolean);
+    const pts=reconstructGeometry(r.nodes);
     return{points:pts,distance:r.length,stats:r.stats};
   }
 
@@ -757,42 +820,252 @@
 
   async function fetchAllTiles(bboxes,types,signal){const all=[],seen=new Set();for(let i=0;i<bboxes.length;i++){if(signal?.aborted)throw new DOMException('Annule','AbortError');appendLog(`  Tuile ${i+1}/${bboxes.length}`);let ok=false;for(let attempt=0;attempt<2&&!ok;attempt++){if(attempt>0){appendLog('    Retry 5s...');await delay(5000,signal)}for(const server of OVERPASS_REMOTE){const host=server.replace(/https?:\/\//,'').split('/')[0];try{const els=await fetchTile(bboxes[i],server,types,signal);let added=0;for(const el of els){if(seen.has(el.id))continue;seen.add(el.id);all.push(el);added++}appendLog(`    OK ${host} (+${added})`);ok=true;await delay(OVERPASS_OK_DELAY,signal);break}catch(e){if(e.name==='AbortError')throw e;appendLog(`    Echec ${host}: ${e.message}`);await delay(OVERPASS_FAIL_DELAY,signal)}}}if(!ok)appendLog('    Tuile ignoree')}return all}
 
-  function buildGraph(elements,costMap,prefs){const coords=new Map(),adj=new Map();let edges=0;const ensure=k=>{if(!adj.has(k))adj.set(k,[]);return adj.get(k)};for(const way of elements){if(!way.geometry||way.geometry.length<2)continue;const hw=way.tags?.highway||'track',baseMult=costMap[hw],mult=Number.isFinite(baseMult)?baseMult*terrainBiasFromTags(way.tags||{},prefs,hw):baseMult;if(!Number.isFinite(mult)||mult>=9999)continue;const nodes=way.geometry.map(pt=>{const lat=Number(pt.lat),lon=Number(pt.lon),key=keyFromLatLon(lat,lon);if(!coords.has(key))coords.set(key,{lat,lon});return key});for(let i=1;i<nodes.length;i++){const a=nodes[i-1],b=nodes[i],cA=coords.get(a),cB=coords.get(b),dist=haversine(cA.lat,cA.lon,cB.lat,cB.lon);ensure(a).push({to:b,dist,cost:dist*mult,hw});ensure(b).push({to:a,dist,cost:dist*mult,hw});edges++}}return{coords,adj,edgeCount:edges}}
+  // buildGraph: junction-based graph with stored intermediate geometry.
+  // Edges connect junctions (endpoints + nodes shared by multiple ways)
+  // and carry the full OSM point geometry for accurate trace reconstruction.
+  function buildGraph(elements,costMap,prefs){
+    const coords=new Map(),adj=new Map();let edges=0;
+    const ensure=k=>{if(!adj.has(k))adj.set(k,[]);return adj.get(k)};
+    const nodeWayCount=new Map();
 
-  function nearestNode(lat,lon,coords){let bestKey=null,bestDist=Infinity;coords.forEach((v,k)=>{const d=haversine(lat,lon,v.lat,v.lon);if(d<bestDist){bestDist=d;bestKey=k}});if(!bestKey)throw new Error('Impossible de raccrocher au graphe');return{node:bestKey,dist:bestDist}}
-  function healGraph(coords,adj,maxGapM=200){const gs=0.003,grid=new Map();coords.forEach((c,key)=>{const ck=`${Math.floor(c.lat/gs)},${Math.floor(c.lon/gs)}`;if(!grid.has(ck))grid.set(ck,[]);grid.get(ck).push(key)});let added=0;const ensure=k=>{if(!adj.has(k))adj.set(k,[]);return adj.get(k)};coords.forEach((c,key)=>{const kl=Math.floor(c.lat/gs),kn=Math.floor(c.lon/gs);for(let dk=-1;dk<=1;dk++)for(let dn=-1;dn<=1;dn++)for(const nk of(grid.get(`${kl+dk},${kn+dn}`)||[])){if(nk===key)continue;const nc=coords.get(nk),d=haversine(c.lat,c.lon,nc.lat,nc.lon);if(d<=maxGapM){ensure(key).push({to:nk,dist:d,cost:d*1.5,hw:'track'});added++}}});return added}
+    // Pass 1: register all nodes, count how many ways use each node
+    for(const way of elements){
+      if(!way.geometry||way.geometry.length<2)continue;
+      const seen=new Set();
+      for(const pt of way.geometry){
+        const key=keyFromLatLon(Number(pt.lat),Number(pt.lon));
+        if(!coords.has(key))coords.set(key,{lat:Number(pt.lat),lon:Number(pt.lon)});
+        if(!seen.has(key)){seen.add(key);nodeWayCount.set(key,(nodeWayCount.get(key)||0)+1)}
+      }
+    }
+
+    // Pass 1.5: promote near-miss crossings to junctions.
+    // When nodes from DIFFERENT ways are within 25m but don't share an OSM node,
+    // mark them as junctions (count>=2) so edges get split there and healGraph
+    // can later bridge the small gap between the resulting junction nodes.
+    {
+      const gs=0.00025; // ~28m grid cells
+      const grid=new Map();
+      // Map each node key to the set of way IDs that use it
+      const keyWays=new Map();
+      for(const way of elements){
+        if(!way.geometry||way.geometry.length<2)continue;
+        for(const pt of way.geometry){
+          const key=keyFromLatLon(Number(pt.lat),Number(pt.lon));
+          if(!keyWays.has(key))keyWays.set(key,new Set());
+          keyWays.get(key).add(way.id);
+          const c=coords.get(key);if(!c)continue;
+          const gk=`${Math.floor(c.lat/gs)},${Math.floor(c.lon/gs)}`;
+          if(!grid.has(gk))grid.set(gk,new Set());
+          grid.get(gk).add(key);
+        }
+      }
+      let promoted=0;
+      coords.forEach((c,key)=>{
+        if((nodeWayCount.get(key)||0)>=2)return; // already a junction
+        const gl=Math.floor(c.lat/gs),gn=Math.floor(c.lon/gs);
+        const myWays=keyWays.get(key);if(!myWays)return;
+        for(let dl=-1;dl<=1;dl++)for(let dn=-1;dn<=1;dn++){
+          for(const nk of(grid.get(`${gl+dl},${gn+dn}`)||[])){
+            if(nk===key)continue;
+            const nWays=keyWays.get(nk);if(!nWays)continue;
+            // Only promote if the two nodes belong to different ways
+            let diffWay=false;
+            for(const w of nWays){if(!myWays.has(w)){diffWay=true;break}}
+            if(!diffWay)continue;
+            const nc=coords.get(nk);
+            if(nc&&haversine(c.lat,c.lon,nc.lat,nc.lon)<=25){
+              nodeWayCount.set(key,2);
+              nodeWayCount.set(nk,Math.max(nodeWayCount.get(nk)||0,2));
+              promoted++;
+              return; // done for this key
+            }
+          }
+        }
+      });
+    }
+
+    // Pass 2: split ways at junctions, store intermediate geometry on edges
+    for(const way of elements){
+      if(!way.geometry||way.geometry.length<2)continue;
+      let hw=way.tags?.highway||'track';
+      const sf=(way.tags?.surface||'').toLowerCase();
+      if(hw==='unclassified'&&!UNPAVED_SURFACES.has(sf))hw='road';
+      else if(hw==='track'&&PAVED_SURFACES.has(sf)&&(way.tags?.tracktype||'')==='grade1')hw='road';
+      const baseMult=costMap[hw],mult=Number.isFinite(baseMult)?baseMult*terrainBiasFromTags(way.tags||{},prefs,hw):baseMult;
+      if(!Number.isFinite(mult)||mult>=9999)continue;
+      const pts=way.geometry.map(p=>({lat:Number(p.lat),lon:Number(p.lon)}));
+      const keys=pts.map(p=>keyFromLatLon(p.lat,p.lon));
+
+      // Junctions = endpoints + nodes shared by >=2 ways
+      const junctions=[0];
+      for(let i=1;i<keys.length-1;i++){
+        if((nodeWayCount.get(keys[i])||0)>1)junctions.push(i);
+      }
+      junctions.push(keys.length-1);
+
+      for(let j=0;j<junctions.length-1;j++){
+        const iA=junctions[j],iB=junctions[j+1];
+        if(iA===iB)continue;
+        const kA=keys[iA],kB=keys[iB];
+        if(kA===kB)continue;
+        const segPts=pts.slice(iA,iB+1);
+        const dist=polylineLength(segPts);
+        if(dist<2)continue;
+        ensure(kA).push({to:kB,dist,cost:dist*mult,hw,pts:segPts});
+        ensure(kB).push({to:kA,dist,cost:dist*mult,hw,pts:[...segPts].reverse()});
+        edges++;
+      }
+    }
+    return{coords,adj,edgeCount:edges};
+  }
+
+  // Snap to nearest node that is actually a junction in the graph (has edges in adj)
+  function nearestNode(lat,lon,coords,adj){let bestKey=null,bestDist=Infinity;coords.forEach((v,k)=>{if(adj&&!adj.has(k))return;const d=haversine(lat,lon,v.lat,v.lon);if(d<bestDist){bestDist=d;bestKey=k}});if(!bestKey)throw new Error('Impossible de raccrocher au graphe');return{node:bestKey,dist:bestDist}}
+  // healGraph: closes tiny intersection gaps so the router can pass through.
+  // Heal edges are tagged 'heal' (NOT counted as off-road) and given a heavy cost
+  // multiplier so the router only uses them as a true last resort. Default gap is
+  // small (25m) — large gaps create phantom shortcuts through fields/roads.
+  function healGraph(coords,adj,maxGapM=25){
+    // Only heal between existing junction nodes (nodes already in adj).
+    // Healing intermediate geometry points creates orphan junctions that
+    // aren't connected to their parent edges, causing diagonal shortcuts.
+    const gs=0.001,grid=new Map();
+    adj.forEach((_,key)=>{const c=coords.get(key);if(!c)return;const ck=`${Math.floor(c.lat/gs)},${Math.floor(c.lon/gs)}`;if(!grid.has(ck))grid.set(ck,[]);grid.get(ck).push(key)});
+    let added=0;
+    adj.forEach((_,key)=>{
+      const c=coords.get(key);if(!c)return;
+      const kl=Math.floor(c.lat/gs),kn=Math.floor(c.lon/gs);
+      for(let dk=-1;dk<=1;dk++)for(let dn=-1;dn<=1;dn++){
+        for(const nk of(grid.get(`${kl+dk},${kn+dn}`)||[])){
+          if(nk===key)continue;
+          const nc=coords.get(nk),d=haversine(c.lat,c.lon,nc.lat,nc.lon);
+          if(d<=maxGapM){adj.get(key).push({to:nk,dist:d,cost:d*30,hw:'heal',pts:[{lat:c.lat,lon:c.lon},{lat:nc.lat,lon:nc.lon}]});added++}
+        }
+      }
+    });
+    return added;
+  }
 
   class MinHeap{constructor(){this.d=[]}push(x){this.d.push(x);this._up(this.d.length-1)}pop(){if(!this.d.length)return null;const t=this.d[0],e=this.d.pop();if(this.d.length){this.d[0]=e;this._dn(0)}return t}_up(i){while(i>0){const p=(i-1)>>1;if(this.d[i].cost>=this.d[p].cost)break;[this.d[i],this.d[p]]=[this.d[p],this.d[i]];i=p}}_dn(i){const n=this.d.length;while(true){let s=i,l=2*i+1,r=l+1;if(l<n&&this.d[l].cost<this.d[s].cost)s=l;if(r<n&&this.d[r].cost<this.d[s].cost)s=r;if(s===i)break;[this.d[i],this.d[s]]=[this.d[s],this.d[i]];i=s}}empty(){return!this.d.length}}
 
-  function aStarRoute(start,goal,adj,coords){if(!adj.has(start)||!adj.has(goal))return null;const gc=coords?.get(goal);const h=k=>{if(!gc||!coords)return 0;const c=coords.get(k);return c?haversine(c.lat,c.lon,gc.lat,gc.lon)*.8:0};const heap=new MinHeap();heap.push({node:start,cost:h(start),g:0,real:0,stats:{},prev:null});const best=new Map([[start,0]]),visited=new Set();while(!heap.empty()){const cur=heap.pop();if(!cur||visited.has(cur.node))continue;visited.add(cur.node);if(cur.node===goal)return{nodes:cur,length:cur.real,stats:cur.stats};for(const edge of(adj.get(cur.node)||[])){if(visited.has(edge.to))continue;const ng=cur.g+edge.cost;if(ng>=(best.get(edge.to)??Infinity))continue;best.set(edge.to,ng);const st={...cur.stats};st[edge.hw]=(st[edge.hw]||0)+edge.dist;heap.push({node:edge.to,cost:ng+h(edge.to),g:ng,real:cur.real+edge.dist,stats:st,prev:cur})}}return null}
-  function reconstructPath(node){const p=[];let c=node;while(c){p.push(c.node);c=c.prev}return p.reverse()}
+  function aStarRoute(start,goal,adj,coords){if(!adj.has(start)||!adj.has(goal))return null;const gc=coords?.get(goal);const h=k=>{if(!gc||!coords)return 0;const c=coords.get(k);return c?haversine(c.lat,c.lon,gc.lat,gc.lon)*.8:0};const heap=new MinHeap();heap.push({node:start,cost:h(start),g:0,real:0,stats:{},prev:null,edge:null});const best=new Map([[start,0]]),visited=new Set();while(!heap.empty()){const cur=heap.pop();if(!cur||visited.has(cur.node))continue;visited.add(cur.node);if(cur.node===goal)return{nodes:cur,length:cur.real,stats:cur.stats};for(const edge of(adj.get(cur.node)||[])){if(visited.has(edge.to))continue;const ng=cur.g+edge.cost;if(ng>=(best.get(edge.to)??Infinity))continue;best.set(edge.to,ng);const st={...cur.stats};st[edge.hw]=(st[edge.hw]||0)+edge.dist;heap.push({node:edge.to,cost:ng+h(edge.to),g:ng,real:cur.real+edge.dist,stats:st,prev:cur,edge})}}return null}
+  // Reconstruct full geometry from A* result using stored edge.pts
+  function reconstructGeometry(endNode){
+    const segments=[];let c=endNode;
+    while(c){if(c.edge&&c.edge.pts)segments.push(c.edge.pts);c=c.prev}
+    segments.reverse();
+    const points=[];
+    for(const seg of segments){
+      for(const p of seg){
+        const last=points[points.length-1];
+        if(!last||Math.abs(last.lat-p.lat)>1e-6||Math.abs(last.lon-p.lon)>1e-6)points.push({lat:p.lat,lon:p.lon});
+      }
+    }
+    return densifyPoints(points,150);
+  }
+
+  // Densify: insert intermediate points only for very large gaps (>maxGapM).
+  // Keeps natural OSM geometry intact for moderate gaps to avoid
+  // straight-line interpolation on curved roads.
+  function densifyPoints(pts,maxGapM=150){
+    if(pts.length<2)return pts;
+    const out=[pts[0]];
+    for(let i=1;i<pts.length;i++){
+      const a=pts[i-1],b=pts[i];
+      const d=haversine(a.lat,a.lon,b.lat,b.lon);
+      if(d>maxGapM){
+        const n=Math.ceil(d/maxGapM);
+        for(let j=1;j<n;j++){const t=j/n;out.push({lat:a.lat+t*(b.lat-a.lat),lon:a.lon+t*(b.lon-a.lon)})}
+      }
+      out.push(b);
+    }
+    return out;
+  }
 
   function fallbackSegment(a,b,steps=40){const pts=[];for(let i=0;i<=steps;i++){const t=i/steps;pts.push({lat:a.lat+t*(b.lat-a.lat),lon:a.lon+t*(b.lon-a.lon)})}return pts}
 
-  // Full Dijkstra pipeline for manual waypoints
+  // Full Dijkstra pipeline for manual waypoints — local tiles + difficulty-aware cost map
+  // Strategy: fetch a wide type set so the graph stays connected, then penalise
+  // non-difficulty types via cost so the router prefers difficulty types but can
+  // fall back when they don't connect.
   async function computeRouteDijkstra(allWaypoints,signal){
-    const types=activeTypes();if(!types.length)throw new Error('Selectionne au moins un type de voie');
-    const costMap={};for(const t of TYPES)costMap[t]=types.includes(t)?(DIJKSTRA_COSTS[t]??5.0):Infinity;
+    const diffTypes=new Set(DIFFICULTY_LEVELS[currentDifficulty].types);
+    // Fetch ALL types including roads so the graph stays connected.
+    // Off-road trails form isolated islands; roads bridge them.
+    const fetchTypes=['track','path','unclassified','tertiary','secondary'];
+    // Cost map: difficulty types are cheap, off-road fallback is ×4,
+    // roads are ×12 (very heavy) so the router only uses them to bridge gaps.
+    const costMap={};
+    for(const t of TYPES){
+      if(diffTypes.has(t))costMap[t]=DIJKSTRA_COSTS[t]??5.0;
+      else if(OFFROAD_TYPES.has(t))costMap[t]=(DIJKSTRA_COSTS[t]??5.0)*4.0; // off-road fallback
+      else costMap[t]=(DIJKSTRA_COSTS[t]??5.0)*12.0; // road bridge (last resort)
+    }
     const prefs=getRoutingPrefs();
-    appendLog('[Dijkstra] Chargement zone...');
-    const bboxes=buildBboxes(allWaypoints);
-    const elements=await fetchAllTiles(bboxes,types,signal);
-    if(!elements.length)throw new Error('Aucun chemin OSM');
+    appendLog(`[Dijkstra] niv.${currentDifficulty} (${[...diffTypes].join('+')}) - chargement zone...`);
+
+    // Compute single bbox covering all waypoints with ~5.5km padding
+    let latMin=Infinity,latMax=-Infinity,lonMin=Infinity,lonMax=-Infinity;
+    for(const w of allWaypoints){if(w.lat<latMin)latMin=w.lat;if(w.lat>latMax)latMax=w.lat;if(w.lon<lonMin)lonMin=w.lon;if(w.lon>lonMax)lonMax=w.lon}
+    const padDeg=0.05;
+    const s=(latMin-padDeg).toFixed(5),n=(latMax+padDeg).toFixed(5);
+    const w=(lonMin-padDeg).toFixed(5),e=(lonMax+padDeg).toFixed(5);
+
+    const elements=await fetchTrailNetworkBbox(s,n,w,e,fetchTypes,signal,'waypoints');
+    if(!elements.length)throw new Error('Aucun chemin OSM dans la zone');
+
     appendLog('[Dijkstra] Construction graphe...');
-    const{coords,adj}=buildGraph(elements,costMap,prefs);healGraph(coords,adj,200);
-    appendLog(`[Dijkstra] ${coords.size} noeuds`);
-    const snapped=allWaypoints.map(w=>{const{node,dist}=nearestNode(w.lat,w.lon,coords);return{...w,node}});
+    const{coords,adj}=buildGraph(elements,costMap,prefs);
+    // Progressive heal: start small (25m), retry at 75m then 150m if routing fails
+    const HEAL_GAPS=[25,75,150];
+    let currentHealIdx=0;
+    healGraph(coords,adj,HEAL_GAPS[0]);
+    appendLog(`[Dijkstra] ${coords.size} noeuds, heal <=25m`);
+    const snapped=allWaypoints.map(wp=>{const{node,dist}=nearestNode(wp.lat,wp.lon,coords,adj);return{...wp,node,snapDist:dist}});
+    for(const sp of snapped)if(sp.snapDist>2000)appendLog(`  Avert: ${sp.name} a ${(sp.snapDist/1000).toFixed(1)}km du graphe`);
+
     const points=[],stats={};let total=0;
     const push=p=>{const last=points[points.length-1];if(!last||last.lat!==p.lat||last.lon!==p.lon)points.push({lat:p.lat,lon:p.lon})};
     for(let i=0;i<snapped.length-1;i++){
       appendLog(`  ${snapped[i].name} \u2192 ${snapped[i+1].name}`);
-      const r=aStarRoute(snapped[i].node,snapped[i+1].node,adj,coords);
-      if(!r){fallbackSegment(snapped[i],snapped[i+1]).forEach(push);continue}
+      let r=aStarRoute(snapped[i].node,snapped[i+1].node,adj,coords);
+      // Progressive heal retry: widen gap to bridge disconnected trail clusters
+      while(!r&&currentHealIdx<HEAL_GAPS.length-1){
+        currentHealIdx++;
+        const gap=HEAL_GAPS[currentHealIdx];
+        appendLog(`    Graphe deconnecte, heal etendu a ${gap}m...`);
+        healGraph(coords,adj,gap);
+        r=aStarRoute(snapped[i].node,snapped[i+1].node,adj,coords);
+      }
+      if(!r){
+        // BRouter fallback for disconnected segments (uses real road network)
+        try{
+          appendLog(`    Dijkstra echec, fallback BRouter...`);
+          const from={lat:snapped[i].lat,lon:snapped[i].lon},to={lat:snapped[i+1].lat,lon:snapped[i+1].lon};
+          const seg=await brouterSegment(from,to,signal);
+          seg.points.forEach(push);total+=seg.distance;
+          stats.road=(stats.road||0)+seg.distance;
+          appendLog(`    BRouter OK ${(seg.distance/1000).toFixed(1)} km (route, pas de stats off-road)`);
+          continue;
+        }catch(be){
+          if(be.name==='AbortError')throw be;
+          appendLog(`    BRouter echec aussi: ${be.message}, segment direct`);
+          fallbackSegment(snapped[i],snapped[i+1]).forEach(push);continue;
+        }
+      }
       total+=r.length;Object.entries(r.stats).forEach(([hw,d])=>{stats[hw]=(stats[hw]||0)+d});
-      reconstructPath(r.nodes).forEach(k=>{const c=coords.get(k);if(c)push(c)});
-      appendLog(`    OK ${(r.length/1000).toFixed(1)} km`);
+      reconstructGeometry(r.nodes).forEach(push);
+      const offDist=Object.entries(r.stats).reduce((s,[hw,v])=>s+(OFFROAD_TYPES.has(hw)?v:0),0);
+      const diffDist=Object.entries(r.stats).reduce((s,[hw,v])=>s+(diffTypes.has(hw)?v:0),0);
+      const healDist=r.stats.heal||0;
+      const offPct=r.length>0?Math.round(offDist/r.length*100):0;
+      const diffPct=r.length>0?Math.round(diffDist/r.length*100):0;
+      const healStr=healDist>0?`, ${Math.round(healDist)}m heal`:'';
+      appendLog(`    OK ${(r.length/1000).toFixed(1)} km (${offPct}% off-road, ${diffPct}% niv.${currentDifficulty}${healStr})`);
     }
-    return{points,total,stats,engine:'Dijkstra'}
+    stats.offroad=Object.entries(stats).reduce((s,[hw,v])=>s+(OFFROAD_TYPES.has(hw)?v:0),0);
+    return{points,total,stats,engine:'Dijkstra (local)'}
   }
 
   /* ══════════════════════════════════════════════════
@@ -1213,8 +1486,8 @@
     allWaypoints.push({name:'ARRIVEE',lat:startLat,lon:startLon});
 
     // 7. Stats from tracked distances
-    // track+path = strict off-road, unclassified counts as off-road for diff 3
-    const offRoadDist=distByType.track+distByType.path+(currentDifficulty>=3?distByType.unclassified:0);
+    // Off-road = track + path + unclassified (paved unclassified already reclassified as 'road')
+    const offRoadDist=distByType.track+distByType.path+distByType.unclassified;
     const stats={...distByType,offroad:offRoadDist};
 
     appendLog(`[Trail] Trace: ${(totalDist/1000).toFixed(1)}km, ${allWaypoints.length} WP`);
@@ -1242,19 +1515,19 @@
       }
       return{points,total,stats:null,engine:'BRouter'};
     }
-    // Auto
-    try{appendLog('[Moteur] Auto \u2192 BRouter...');
+    // Auto : Dijkstra local par defaut (respecte la difficulte), BRouter en secours
+    try{appendLog('[Moteur] Auto \u2192 Dijkstra local (respecte difficulte)...');
+      return await computeRouteDijkstra(allWaypoints,signal);
+    }catch(err){
+      if(err.name==='AbortError')throw err;
+      appendLog(`[Moteur] Dijkstra echec: ${err.message} -> BRouter (sans difficulte)`);
       const points=[];let total=0;
       for(let i=0;i<allWaypoints.length-1;i++){
         if(signal?.aborted)throw new DOMException('Annule','AbortError');
         const seg=await brouterSegment(allWaypoints[i],allWaypoints[i+1],signal);
         (i===0?seg.points:seg.points.slice(1)).forEach(p=>points.push(p));total+=seg.distance;
       }
-      appendLog('[Moteur] BRouter OK');return{points,total,stats:null,engine:'BRouter'};
-    }catch(err){
-      if(err.name==='AbortError')throw err;
-      appendLog(`[Moteur] BRouter echec: ${err.message} -> Dijkstra`);
-      return await computeRouteDijkstra(allWaypoints,signal);
+      appendLog('[Moteur] BRouter OK (fallback)');return{points,total,stats:null,engine:'BRouter (fallback)'};
     }
   }
 
@@ -1271,12 +1544,19 @@
      11. MAP & PREVIEW
      ══════════════════════════════════════════════════ */
 
-  const previewState={map:L.map('viewer-map',{zoomControl:true}).setView([43.69,2.43],10),routeLayer:null,markers:[],manualMarkers:[],manualWaypoints:[],bounds:null};
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',subdomains:'abcd',maxZoom:19}).addTo(previewState.map);
+  const previewState={map:L.map('viewer-map',{zoomControl:false}).setView([43.69,2.43],10),routeLayer:null,markers:[],manualMarkers:[],manualWaypoints:[],bounds:null};
+  L.control.zoom({position:'topright'}).addTo(previewState.map);
+  currentTileLayer=L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com">CARTO</a>',subdomains:'abcd',maxZoom:19}).addTo(previewState.map);
 
   function updateViewerEmpty(){document.getElementById('fitbtn').disabled=!(previewState.routeLayer||previewState.manualWaypoints.length)}
-  function renderWaypointList(items,editable=false){const box=document.getElementById('viewer-wpts');box.innerHTML='';if(!items.length){box.innerHTML='<div class="rounded-xl bg-slate-950/60 px-3 py-2 text-slate-500">Clique sur la carte pour ajouter des points.</div>';return}items.forEach((w,i)=>{const row=document.createElement('div');row.className='flex items-start gap-2 rounded-xl bg-slate-950/60 px-3 py-2';const btn=document.createElement('button');btn.type='button';btn.className='min-w-0 flex-1 text-left';btn.innerHTML=`<div class="font-semibold text-slate-100">${escapeHtml(w.name)}</div><div class="text-[11px] text-slate-400">${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</div>`;btn.onclick=()=>{previewState.map.setView([w.lat,w.lon],14);(w.marker||previewState.markers[i]||previewState.manualMarkers[i])?.openPopup?.()};row.appendChild(btn);if(editable){const rm=document.createElement('button');rm.type='button';rm.className='rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-red-300 hover:bg-red-500/10';rm.textContent='X';rm.onclick=()=>removeManualWaypoint(i);row.appendChild(rm)}box.appendChild(row)})}
-  function refreshManualWaypoints(){previewState.manualMarkers.forEach(m=>previewState.map.removeLayer(m));previewState.manualMarkers=[];previewState.manualWaypoints.forEach((w,i)=>{const m=L.circleMarker([w.lat,w.lon],{radius:6,color:'#fff',weight:2,fillColor:'#38bdf8',fillOpacity:1}).addTo(previewState.map).bindPopup(`<strong>${escapeHtml(w.name)}</strong><br>${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`);w.marker=m;previewState.manualMarkers.push(m)});if(!previewState.routeLayer){renderWaypointList(previewState.manualWaypoints,true);document.getElementById('pv-name').textContent=previewState.manualWaypoints.length?'Waypoints manuels':'Aucune';document.getElementById('pv-dist').textContent='\u2014';document.getElementById('pv-offroad').textContent='\u2014';document.getElementById('pv-points').textContent=`${previewState.manualWaypoints.length} / 0`}updateViewerEmpty()}
+  function renderWaypointList(items,editable=false){const box=document.getElementById('viewer-wpts');box.innerHTML='';if(!items.length){box.innerHTML='<div class="card-bg rounded-lg border px-3 py-2 muted text-[11px]">Cliquez sur la carte pour ajouter des points.</div>';return}items.forEach((w,i)=>{const row=document.createElement('div');row.className='flex items-center gap-2 card-bg rounded-lg border px-3 py-2';const idx=document.createElement('span');idx.className='flex-shrink-0 w-5 h-5 rounded-full bg-gblue dark:bg-[#8ab4f8] text-white dark:text-[#202124] text-[10px] font-bold flex items-center justify-center';idx.textContent=String.fromCharCode(65+i);row.appendChild(idx);const btn=document.createElement('button');btn.type='button';btn.className='min-w-0 flex-1 text-left';btn.innerHTML=`<div class="font-medium text-xs">${escapeHtml(w.name)}</div><div class="text-[10px] muted">${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</div>`;btn.onclick=()=>{previewState.map.setView([w.lat,w.lon],14);(w.marker||previewState.markers[i]||previewState.manualMarkers[i])?.openPopup?.()};row.appendChild(btn);if(editable){const rm=document.createElement('button');rm.type='button';rm.className='flex-shrink-0 rounded-full w-6 h-6 flex items-center justify-center text-gred dark:text-[#f28b82] hover-bg text-xs font-bold';rm.innerHTML='<span class="material-symbols-outlined text-sm">close</span>';rm.onclick=()=>removeManualWaypoint(i);row.appendChild(rm)}box.appendChild(row)})}
+  function setStatValues(dist,offroad,points,engine){
+    document.getElementById('pv-dist').textContent=dist;document.getElementById('pv-offroad').textContent=offroad;
+    document.getElementById('pv-points').textContent=points;document.getElementById('pv-engine').textContent=engine;
+    const d2=document.getElementById('pv-dist2'),o2=document.getElementById('pv-offroad2'),p2=document.getElementById('pv-points2'),e2=document.getElementById('pv-engine2');
+    if(d2)d2.textContent=dist;if(o2)o2.textContent=offroad;if(p2)p2.textContent=points;if(e2)e2.textContent=engine;
+  }
+  function refreshManualWaypoints(){previewState.manualMarkers.forEach(m=>previewState.map.removeLayer(m));previewState.manualMarkers=[];previewState.manualWaypoints.forEach((w,i)=>{const m=L.circleMarker([w.lat,w.lon],{radius:6,color:'#fff',weight:2,fillColor:'#4285f4',fillOpacity:1}).addTo(previewState.map).bindPopup(`<strong>${escapeHtml(w.name)}</strong><br>${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`);w.marker=m;previewState.manualMarkers.push(m)});if(!previewState.routeLayer){renderWaypointList(previewState.manualWaypoints,true);document.getElementById('pv-name').textContent=previewState.manualWaypoints.length?'Waypoints manuels':'Aucune';setStatValues('\u2014','\u2014',`${previewState.manualWaypoints.length} / 0`,'\u2014')}updateViewerEmpty()}
   function addManualWaypoint(lat,lon){const pt={name:`PASSAGE ${previewState.manualWaypoints.length+1}`,lat:+lat.toFixed(5),lon:+lon.toFixed(5)};previewState.manualWaypoints.push(pt);if(previewState.manualWaypoints.length>=2)setMode('waypoints');refreshManualWaypoints();setStatus(`Point ajoute : ${pt.name}`,'ok');if(!previewState.routeLayer&&previewState.manualMarkers.length){previewState.bounds=L.featureGroup(previewState.manualMarkers).getBounds()}}
   function removeManualWaypoint(idx){previewState.manualWaypoints.splice(idx,1);previewState.manualWaypoints.forEach((w,i)=>w.name=`PASSAGE ${i+1}`);refreshManualWaypoints()}
   function clearManualWaypoints(){previewState.manualWaypoints=[];refreshManualWaypoints();if(!previewState.routeLayer){previewState.bounds=null;document.getElementById('fitbtn').disabled=true}setStatus('Waypoints effaces.','ok')}
@@ -1284,7 +1564,7 @@
   function fitPreviewRoute(){if(previewState.bounds)previewState.map.fitBounds(previewState.bounds,{padding:[20,20]});else if(previewState.manualMarkers.length)previewState.map.fitBounds(L.featureGroup(previewState.manualMarkers).getBounds(),{padding:[20,20]})}
   function previewDistance(pts){let t=0;for(let i=1;i<pts.length;i++)t+=haversine(pts[i-1].lat,pts[i-1].lon,pts[i].lat,pts[i].lon);return t}
 
-  async function renderPreview(meta,waypoints,points,route){clearPreviewLayers();document.getElementById('fitbtn').disabled=false;previewState.routeLayer=L.polyline(points.map(p=>[p.lat,p.lon]),{color:'#f59e0b',weight:4,opacity:.95,smoothFactor:1}).addTo(previewState.map);previewState.bounds=previewState.routeLayer.getBounds();fitPreviewRoute();waypoints.forEach((w,i)=>{const isS=i===0,isF=i===waypoints.length-1,color=isS?'#22c55e':isF?'#ef4444':'#f59e0b';const m=L.circleMarker([w.lat,w.lon],{radius:isS||isF?7:5,color:'#fff',weight:2,fillColor:color,fillOpacity:1}).addTo(previewState.map).bindPopup(`<strong>${escapeHtml(w.name)}</strong><br>${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`);w.marker=m;previewState.markers.push(m)});renderWaypointList(waypoints,false);const totalDist=route?.total||previewDistance(points),offDist=Object.entries(route?.stats||{}).reduce((s,[hw,v])=>s+(OFFROAD_TYPES.has(hw)?v:0),0),offPct=route?.stats?Math.round(offDist/totalDist*100):0;document.getElementById('pv-name').textContent=meta.startName||meta.name||'Trace';document.getElementById('pv-dist').textContent=`${(totalDist/1000).toFixed(1)} km`;document.getElementById('pv-offroad').textContent=route?.stats?`${offPct}%`:'\u2014';document.getElementById('pv-points').textContent=`${waypoints.length} / ${points.length}`;document.getElementById('pv-engine').textContent=route?.engine||'\u2014';updateViewerEmpty();setTimeout(()=>previewState.map.invalidateSize(),50)}
+  async function renderPreview(meta,waypoints,points,route){clearPreviewLayers();document.getElementById('fitbtn').disabled=false;previewState.routeLayer=L.polyline(points.map(p=>[p.lat,p.lon]),{color:'#4285f4',weight:5,opacity:.85,smoothFactor:1}).addTo(previewState.map);previewState.bounds=previewState.routeLayer.getBounds();fitPreviewRoute();waypoints.forEach((w,i)=>{const isS=i===0,isF=i===waypoints.length-1,color=isS?'#34a853':isF?'#ea4335':'#4285f4';const m=L.circleMarker([w.lat,w.lon],{radius:isS||isF?7:5,color:'#fff',weight:2,fillColor:color,fillOpacity:1}).addTo(previewState.map).bindPopup(`<strong>${escapeHtml(w.name)}</strong><br>${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}`);w.marker=m;previewState.markers.push(m)});renderWaypointList(waypoints,false);const totalDist=route?.total||previewDistance(points),offDist=Object.entries(route?.stats||{}).reduce((s,[hw,v])=>s+(OFFROAD_TYPES.has(hw)?v:0),0),offPct=route?.stats?Math.round(offDist/totalDist*100):0;document.getElementById('pv-name').textContent=meta.startName||meta.name||'Trace';const distStr=`${(totalDist/1000).toFixed(1)} km`,offStr=route?.stats?`${offPct}% off-road`:'\u2014',ptsStr=`${waypoints.length} wp / ${points.length} pts`,engStr=route?.engine||'\u2014';setStatValues(distStr,offStr,ptsStr,engStr);updateViewerEmpty();setTimeout(()=>previewState.map.invalidateSize(),50)}
 
   function parseGpxText(text){const p=new DOMParser(),xml=p.parseFromString(text,'application/xml');if(xml.querySelector('parsererror'))throw new Error('GPX invalide.');const wpts=Array.from(xml.getElementsByTagName('wpt')).map((w,i)=>({name:w.getElementsByTagName('name')[0]?.textContent||`WP${i+1}`,lat:parseFloat(w.getAttribute('lat')),lon:parseFloat(w.getAttribute('lon'))}));const pts=Array.from(xml.getElementsByTagName('trkpt')).map(t=>({lat:parseFloat(t.getAttribute('lat')),lon:parseFloat(t.getAttribute('lon'))}));const name=xml.getElementsByTagName('name')[0]?.textContent||'Trace GPX';if(!pts.length)throw new Error('Aucun point dans ce GPX.');return{name,waypoints:wpts,points:pts}}
   async function loadPreviewFile(file){const text=await file.text(),parsed=parseGpxText(text),first=parsed.points[0],wpts=parsed.waypoints.length?parsed.waypoints:[{name:parsed.name,lat:first.lat,lon:first.lon}];await renderPreview({startName:parsed.name,name:parsed.name},wpts,parsed.points,null);setStatus(`GPX importe : ${parsed.name}`,'ok')}
@@ -1387,7 +1667,9 @@
   setMapMode('pan');
   updateSummary();
   setStatus('Pret.');
-  document.getElementById('log').textContent='Journal de generation (Trail Network / BRouter / Dijkstra)';
+  document.getElementById('log').textContent='Journal de generation';
+  // Close layer menu on map click
+  previewState.map.getContainer().addEventListener('click',e=>{if(!e.target.closest('#layer-menu')&&!e.target.closest('[onclick*="toggleLayerMenu"]'))document.getElementById('layer-menu')?.classList.add('hidden')});
 
   </script>
 </body>
